@@ -1,59 +1,64 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
-
-import { useColorScheme } from '@/components/useColorScheme';
-
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
-
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+import { Stack, useRouter, useSegments } from 'expo-router';
+import { deleteItemAsync, getItemAsync } from 'expo-secure-store';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import api from '../services/api'; // Ajuste o caminho se necessário
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...FontAwesome.font,
-  });
+  const [isReady, setIsReady] = useState(false);
+  const segments = useSegments();
+  const router = useRouter();
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+  // Função para validar o token e os dados
+  const checkAuth = async () => {
+    const token = await getItemAsync('menuflow_token');
+    const userData = await getItemAsync('menuflow_user');
+    const inAuthGroup = segments[0] === 'login';
 
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    if (!token && !inAuthGroup) {
+      // Sem token e fora do login? Manda pro login
+      router.replace('/login');
+    } else if (token && userData) {
+      // Se tem token, garante que o Axios do app inteiro vai usá-lo
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      
+      if (inAuthGroup) {
+        // Se já está logado e tentou abrir a tela de Login, faz o roteamento inteligente
+        const user = JSON.parse(userData);
+        
+        if (user.role === 'SUPER_ADMIN' || user.brandIds?.length > 1) {
+          router.replace('/(tabs)');
+        } else if (user.brandIds?.length === 1) {
+          router.replace(`/brand/${user.brandIds[0]}`);
+        } else {
+          // Token existe mas não tem lojas cadastradas (segurança)
+          await deleteItemAsync('menuflow_token');
+          await deleteItemAsync('menuflow_user');
+          router.replace('/login');
+        }
+      }
     }
-  }, [loaded]);
+    
+    if (!isReady) setIsReady(true);
+  };
 
-  if (!loaded) {
-    return null;
+  useEffect(() => {
+    checkAuth();
+  }, [segments]); // Executa sempre que a rota mudar
+
+  if (!isReady) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#0A0A0A' }}>
+        <ActivityIndicator size="large" color="#F59E0B" />
+      </View>
+    );
   }
 
-  return <RootLayoutNav />;
-}
-
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="login" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="brand/[id]" options={{ gestureEnabled: true }} /> 
+    </Stack>
   );
 }
