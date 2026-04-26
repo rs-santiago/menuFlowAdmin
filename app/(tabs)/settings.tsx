@@ -1,13 +1,60 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
+import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import CustomAlert from '../../components/CustomAlert'; // Ajuste o caminho conforme a localização deste arquivo
 
 export default function SettingsScreen() {
   const router = useRouter();
 
-  const handleLogout = async () => {
-    await SecureStore.deleteItemAsync('menuflow_token');
-    router.replace('/login');
+  // Estado Dinâmico para o CustomAlert
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    iconName: 'info' as keyof typeof Feather.glyphMap,
+    iconColor: '#F59E0B',
+    confirmText: 'OK',
+    showCancel: false,
+    onConfirm: () => hideAlert(),
+  });
+
+  const hideAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
+
+  const showAlert = (
+    title: string, 
+    message: string, 
+    iconName: keyof typeof Feather.glyphMap = 'info', 
+    iconColor = '#F59E0B',
+    confirmText = 'OK',
+    showCancel = false,
+    onConfirmAction = hideAlert
+  ) => {
+    setAlertConfig({ visible: true, title, message, iconName, iconColor, confirmText, showCancel, onConfirm: onConfirmAction });
+  };
+
+  const performLogout = async () => {
+    hideAlert();
+    try {
+      await SecureStore.deleteItemAsync('menuflow_token');
+      await SecureStore.deleteItemAsync('menuflow_user'); // Caso você também salve os dados do usuário
+      router.replace('/login');
+    } catch (e) {
+      showAlert('Erro', 'Não foi possível sair da conta.', 'x-circle', '#EF4444');
+    }
+  };
+
+  const confirmLogout = () => {
+    showAlert(
+      'Sair da Conta',
+      'Deseja realmente encerrar a sua sessão?',
+      'log-out',
+      '#EF4444', // Vermelho para chamar a atenção
+      'SAIR',
+      true,
+      performLogout
+    );
   };
 
   return (
@@ -15,10 +62,23 @@ export default function SettingsScreen() {
       <Text style={styles.title}>Configurações</Text>
       
       <View style={styles.section}>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <TouchableOpacity style={styles.logoutButton} onPress={confirmLogout}>
           <Text style={styles.logoutText}>Sair da Conta</Text>
         </TouchableOpacity>
       </View>
+
+      {/* COMPONENTE DE ALERTA DINÂMICO */}
+      <CustomAlert 
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        iconName={alertConfig.iconName}
+        iconColor={alertConfig.iconColor}
+        confirmText={alertConfig.confirmText}
+        showCancel={alertConfig.showCancel}
+        onCancel={hideAlert}
+        onConfirm={alertConfig.onConfirm}
+      />
     </View>
   );
 }

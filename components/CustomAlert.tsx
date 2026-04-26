@@ -1,0 +1,133 @@
+import { Feather } from '@expo/vector-icons';
+import React from 'react';
+import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
+interface CustomAlertProps {
+  visible: boolean;
+  title: string;
+  message: string;
+  iconName?: keyof typeof Feather.glyphMap;
+  iconColor?: string;
+  confirmText?: string;
+  cancelText?: string;
+  showCancel?: boolean;
+  onConfirm: () => void;
+  onCancel?: () => void;
+}
+
+export default function CustomAlert({
+  visible,
+  title,
+  message,
+  iconName = 'alert-circle',
+  iconColor = '#F59E0B', // Laranja MenuFlow por padrão
+  confirmText = 'OK',
+  cancelText = 'CANCELAR',
+  showCancel = false,
+  onConfirm,
+  onCancel,
+}: CustomAlertProps) {
+  return (
+    <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onCancel || onConfirm}>
+      <Pressable style={styles.overlay} onPress={onCancel || onConfirm}>
+        <Pressable style={styles.dialog} onPress={(e) => e.stopPropagation()}>
+          
+          {/* Ícone Dinâmico */}
+          <View style={[styles.iconContainer, { backgroundColor: `${iconColor}15`, borderColor: `${iconColor}30` }]}>
+            <Feather name={iconName} size={32} color={iconColor} />
+          </View>
+
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.message}>{message}</Text>
+
+          <View style={styles.buttonsRow}>
+            {/* Botão Cancelar (Opcional) */}
+            {showCancel && (
+              <TouchableOpacity style={styles.btnSecondary} onPress={onCancel}>
+                <Text style={styles.btnSecondaryText}>{cancelText}</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Botão Confirmar Principal */}
+            <TouchableOpacity 
+              style={[styles.btnPrimary, showCancel ? { width: '48%' } : { width: '100%' }, { backgroundColor: iconColor }]} 
+              onPress={onConfirm}
+            >
+              <Text style={styles.btnPrimaryText}>{confirmText}</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 30,
+  },
+  dialog: {
+    backgroundColor: '#171717',
+    width: '100%',
+    borderRadius: 25,
+    padding: 25,
+    paddingTop: 30,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#262626',
+    elevation: 10,
+  },
+  iconContainer: {
+    padding: 15,
+    borderRadius: 50,
+    marginBottom: 20,
+    borderWidth: 1,
+  },
+  title: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: '900',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  message: {
+    color: '#AAA',
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 30,
+    lineHeight: 22,
+  },
+  buttonsRow: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+  },
+  btnSecondary: {
+    backgroundColor: '#262626',
+    paddingVertical: 14,
+    borderRadius: 12,
+    width: '48%',
+    alignItems: 'center',
+  },
+  btnSecondaryText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
+  btnPrimary: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  btnPrimaryText: {
+    color: '#000', // Texto preto para contrastar com o Laranja
+    fontWeight: '900',
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
+});

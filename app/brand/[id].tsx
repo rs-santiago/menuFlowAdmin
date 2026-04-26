@@ -1,10 +1,9 @@
 import { Feather } from '@expo/vector-icons';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Modal,
@@ -16,6 +15,7 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import CustomAlert from '../../components/CustomAlert';
 import api from '../../services/api';
 
 interface Product {
@@ -34,12 +34,35 @@ export default function BrandProductsScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Estados para os Modais
-  const [modalVisible, setModalVisible] = useState(false); // Bottom Sheet de Opções
+  // Estado para o Bottom Sheet de Opções
+  const [modalVisible, setModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false); // Modal de Exclusão
-  const [deletingProduct, setDeletingProduct] = useState(false);
-  const [logoutModalVisible, setLogoutModalVisible] = useState(false); // Modal de Logout
+
+  // Estado Dinâmico para o CustomAlert (Substitui todos os outros modais e o Alert nativo)
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    iconName: 'info' as keyof typeof Feather.glyphMap,
+    iconColor: '#F59E0B',
+    confirmText: 'OK',
+    showCancel: false,
+    onConfirm: () => hideAlert(),
+  });
+
+  const hideAlert = () => setAlertConfig(prev => ({ ...prev, visible: false }));
+
+  const showAlert = (
+    title: string, 
+    message: string, 
+    iconName: keyof typeof Feather.glyphMap = 'info', 
+    iconColor = '#F59E0B',
+    confirmText = 'OK',
+    showCancel = false,
+    onConfirmAction = hideAlert
+  ) => {
+    setAlertConfig({ visible: true, title, message, iconName, iconColor, confirmText, showCancel, onConfirm: onConfirmAction });
+  };
 
   const fetchProducts = async () => {
     try {
@@ -47,25 +70,26 @@ export default function BrandProductsScreen() {
       setProducts(response.data);
     } catch (error) {
       console.error(error);
-      Alert.alert("Erro", "Não foi possível carregar os produtos.");
+      showAlert('Erro', 'Não foi possível carregar os produtos.', 'x-circle', '#EF4444');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchProducts();
-  }, [id]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchProducts(); // Ou fetchDashboardData()
+    }, [id]) // Adicione as dependências necessárias
+  );
 
-  // Função para executar o Logout real
   const performLogout = async () => {
+    hideAlert();
     try {
       await SecureStore.deleteItemAsync('menuflow_token');
       await SecureStore.deleteItemAsync('menuflow_user');
-      setLogoutModalVisible(false);
       router.replace('/login');
     } catch (e) {
-      Alert.alert("Erro", "Falha ao encerrar a sessão.");
+      showAlert('Erro', 'Falha ao encerrar a sessão.', 'x-circle', '#EF4444');
     }
   };
 
@@ -81,7 +105,7 @@ export default function BrandProductsScreen() {
         isAvailable: newStatus
       });
     } catch (error) {
-      Alert.alert("Erro", "Falha ao atualizar status.");
+      showAlert('Erro', 'Falha ao atualizar status.', 'x-circle', '#EF4444');
       fetchProducts();
     }
   };
@@ -91,20 +115,16 @@ export default function BrandProductsScreen() {
     setModalVisible(true);
   };
 
-  // Executa a exclusão final no banco
   const performFinalDelete = async () => {
+    hideAlert();
     if (!selectedProduct) return;
     
-    setDeletingProduct(true);
     try {
       await api.delete(`/admin/products/${selectedProduct.id}`);
       setProducts(prev => prev.filter(p => p.id !== selectedProduct.id));
-      setConfirmDeleteVisible(false);
       setSelectedProduct(null);
     } catch (e) {
-      Alert.alert("Erro", "Não foi possível apagar o produto.");
-    } finally {
-      setDeletingProduct(false);
+      showAlert('Erro', 'Não foi possível apagar o produto.', 'x-circle', '#EF4444');
     }
   };
 
@@ -129,7 +149,14 @@ export default function BrandProductsScreen() {
               <Feather name="arrow-left" size={24} color="#F59E0B" />
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity onPress={() => setLogoutModalVisible(true)} style={styles.backButton}>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => showAlert(
+                'Sair do MenuFlow', 
+                'Deseja realmente encerrar a sua sessão no aplicativo?', 
+                'log-out', '#F59E0B', 'SAIR', true, performLogout
+              )} 
+            >
               <Feather name="log-out" size={24} color="#EF4444" />
             </TouchableOpacity>
           )}
@@ -161,13 +188,11 @@ export default function BrandProductsScreen() {
 
               <View style={styles.cardInfo}>
                 <Text style={styles.cardTitle}>{item.name}</Text>
-                
                 {item.description ? (
                   <Text style={styles.cardDescription} numberOfLines={1}>
                     {item.description}
                   </Text>
                 ) : null}
-
                 <Text style={styles.cardPrice}>
                   {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.price)}
                 </Text>
@@ -211,9 +236,7 @@ export default function BrandProductsScreen() {
           <Feather name="plus" size={30} color="#000" />
         </TouchableOpacity>
 
-        {/* ==========================================
-            MODAL 1: BOTTOM SHEET DE OPÇÕES DO PRODUTO
-            ========================================== */}
+        {/* BOTTOM SHEET DE OPÇÕES DO PRODUTO */}
         <Modal
           animationType="slide"
           transparent={true}
@@ -244,7 +267,11 @@ export default function BrandProductsScreen() {
                 onPress={() => {
                   setModalVisible(false);
                   setTimeout(() => {
-                    setConfirmDeleteVisible(true);
+                    showAlert(
+                      'Confirmar Exclusão', 
+                      `Tens a certeza que desejas apagar ${selectedProduct?.name}?\n\nEsta ação não pode ser desfeita.`, 
+                      'alert-triangle', '#EF4444', 'APAGAR', true, performFinalDelete
+                    );
                   }, 300);
                 }}
               >
@@ -262,95 +289,18 @@ export default function BrandProductsScreen() {
           </Pressable>
         </Modal>
 
-        {/* ==========================================
-            MODAL 2: DIALOG CENTRADO PARA APAGAR PRODUTO
-            ========================================== */}
-        <Modal
-          animationType="fade"
-          transparent={true}
-          visible={confirmDeleteVisible}
-          onRequestClose={() => setConfirmDeleteVisible(false)}
-        >
-          <Pressable style={styles.confirmOverlay} onPress={() => setConfirmDeleteVisible(false)}>
-            <View style={styles.confirmDialog} onStartShouldSetResponder={() => true}>
-              
-              <View style={styles.alertIconContainer}>
-                <Feather name="alert-triangle" size={32} color="#EF4444" />
-              </View>
-
-              <Text style={styles.confirmTitle}>Confirmar Exclusão</Text>
-              
-              <Text style={styles.confirmMessage}>
-                Tens a certeza que desejas apagar{"\n"}
-                <Text style={styles.highlightText}>{selectedProduct?.name}</Text>?
-                {"\n\n"}
-                <Text style={styles.warningText}>Esta ação não pode ser desfeita.</Text>
-              </Text>
-
-              <View style={styles.confirmButtonsRow}>
-                <TouchableOpacity 
-                  style={styles.btnSecondary}
-                  onPress={() => setConfirmDeleteVisible(false)}
-                >
-                  <Text style={styles.btnSecondaryText}>CANCELAR</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.btnDanger, deletingProduct && { opacity: 0.7 }]}
-                  onPress={performFinalDelete}
-                  disabled={deletingProduct}
-                >
-                  {deletingProduct ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <Text style={styles.btnDangerText}>APAGAR</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Pressable>
-        </Modal>
-
-        {/* ==========================================
-            MODAL 3: DIALOG CENTRADO PARA LOGOUT
-            ========================================== */}
-        <Modal
-          animationType="fade"
-          transparent={true}
-          visible={logoutModalVisible}
-          onRequestClose={() => setLogoutModalVisible(false)}
-        >
-          <Pressable style={styles.confirmOverlay} onPress={() => setLogoutModalVisible(false)}>
-            <View style={styles.confirmDialog} onStartShouldSetResponder={() => true}>
-              
-              <View style={styles.logoutIconContainer}>
-                <Feather name="log-out" size={32} color="#F59E0B" />
-              </View>
-
-              <Text style={styles.confirmTitle}>Sair do MenuFlow</Text>
-              
-              <Text style={styles.confirmMessage}>
-                Deseja realmente encerrar a{"\n"}sua sessão no aplicativo?
-              </Text>
-
-              <View style={styles.confirmButtonsRow}>
-                <TouchableOpacity 
-                  style={styles.btnSecondary}
-                  onPress={() => setLogoutModalVisible(false)}
-                >
-                  <Text style={styles.btnSecondaryText}>CANCELAR</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={styles.btnPrimary}
-                  onPress={performLogout}
-                >
-                  <Text style={styles.btnPrimaryText}>SAIR</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Pressable>
-        </Modal>
+        {/* COMPONENTE DE ALERTA DINÂMICO UNIFICADO */}
+        <CustomAlert 
+          visible={alertConfig.visible}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          iconName={alertConfig.iconName}
+          iconColor={alertConfig.iconColor}
+          confirmText={alertConfig.confirmText}
+          showCancel={alertConfig.showCancel}
+          onCancel={hideAlert}
+          onConfirm={alertConfig.onConfirm}
+        />
 
       </View>
     </SafeAreaView>
@@ -358,52 +308,20 @@ export default function BrandProductsScreen() {
 }
 
 const styles = StyleSheet.create({
-  // Estrutura Base
   safeArea: { flex: 1, backgroundColor: '#0A0A0A' },
   container: { flex: 1, paddingHorizontal: 20 },
   centered: { flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center' },
-  
-  // Cabeçalho
   headerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, marginBottom: 25 },
   backButton: { width: 40, height: 40, justifyContent: 'center' },
   headerTitle: { color: '#FFF', fontSize: 22, fontWeight: '900' },
-  
-  // Produto Card
-  productCard: {
-    backgroundColor: '#171717',
-    padding: 12, 
-    borderRadius: 20,
-    marginBottom: 12,
-    flexDirection: 'row', 
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  productCardDisabled: {
-    opacity: 0.5, 
-    backgroundColor: '#121212',
-  },
-  cardImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 14,
-    backgroundColor: '#262626', 
-  },
-  cardInfo: {
-    flex: 1,
-    marginLeft: 15,
-    justifyContent: 'center',
-  },
+  productCard: { backgroundColor: '#171717', padding: 12, borderRadius: 20, marginBottom: 12, flexDirection: 'row', alignItems: 'center', borderWidth: 1 },
+  productCardDisabled: { opacity: 0.5, backgroundColor: '#121212' },
+  cardImage: { width: 70, height: 70, borderRadius: 14, backgroundColor: '#262626' },
+  cardInfo: { flex: 1, marginLeft: 15, justifyContent: 'center' },
   cardTitle: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
   cardDescription: { color: '#888', fontSize: 12, marginTop: 2 },
   cardPrice: { color: '#F59E0B', fontSize: 14, fontWeight: '900', marginTop: 4 },
-  
-  // Ações do Card
-  cardActions: {
-    height: 70,
-    alignItems: 'flex-end',
-    justifyContent: 'space-between', 
-    paddingLeft: 10,
-  },
+  cardActions: { height: 70, alignItems: 'flex-end', justifyContent: 'space-between', paddingLeft: 10 },
   optionsButton: { padding: 4 },
   badgeSmall: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   badgeActive: { backgroundColor: '#10B98120' },
@@ -412,129 +330,14 @@ const styles = StyleSheet.create({
   textActive: { color: '#10B981' },
   textInactive: { color: '#EF4444' },
   emptyText: { color: '#666', textAlign: 'center', marginTop: 50 },
-  
-  // Botão Flutuante (FAB)
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 30,
-    backgroundColor: '#F59E0B',
-    width: 65,
-    height: 65,
-    borderRadius: 35,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#F59E0B',
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-  },
-
-  // Modal 1: Bottom Sheet (Opções)
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#171717',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    padding: 25,
-    paddingBottom: 45,
-    borderWidth: 1,
-    borderColor: '#262626',
-  },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#333',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
+  fab: { position: 'absolute', right: 20, bottom: 30, backgroundColor: '#F59E0B', width: 65, height: 65, borderRadius: 35, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: '#F59E0B', shadowOpacity: 0.3, shadowRadius: 10 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#171717', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 45, borderWidth: 1, borderColor: '#262626' },
+  modalHandle: { width: 40, height: 4, backgroundColor: '#333', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
   modalTitle: { color: '#FFF', fontSize: 19, fontWeight: 'bold', marginBottom: 25, textAlign: 'center' },
   modalOption: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#262626', padding: 18, borderRadius: 18, marginBottom: 12 },
   modalOptionDanger: { backgroundColor: 'rgba(239, 68, 68, 0.08)', borderColor: 'rgba(239, 68, 68, 0.2)', borderWidth: 1 },
   modalOptionText: { color: '#FFF', fontSize: 16, fontWeight: '600', marginLeft: 15 },
   modalCancelButton: { marginTop: 10, padding: 10, alignItems: 'center' },
   modalCancelText: { color: '#666', fontSize: 15, fontWeight: 'bold' },
-
-  // Modais 2 e 3: Dialog Centrado (Confirmações)
-  confirmOverlay: { 
-    flex: 1, 
-    backgroundColor: 'rgba(0, 0, 0, 0.85)', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    padding: 30 
-  },
-  confirmDialog: {
-    backgroundColor: '#171717',
-    width: '100%',
-    borderRadius: 25,
-    padding: 25,
-    paddingTop: 30,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#262626',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
-    elevation: 10,
-  },
-  alertIconContainer: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    padding: 15,
-    borderRadius: 50,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
-  },
-  logoutIconContainer: {
-    backgroundColor: 'rgba(245, 158, 11, 0.1)', // Dourado suave para o logout
-    padding: 15,
-    borderRadius: 50,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.2)',
-  },
-  confirmTitle: { color: '#FFF', fontSize: 20, fontWeight: '900', marginBottom: 15 },
-  confirmMessage: { color: '#AAA', fontSize: 15, textAlign: 'center', marginBottom: 30, lineHeight: 22 },
-  highlightText: { color: '#F59E0B', fontWeight: 'bold' },
-  warningText: { fontSize: 12, color: '#666', fontStyle: 'italic' },
-  confirmButtonsRow: { flexDirection: 'row', width: '100%', justifyContent: 'space-between' },
-  
-  // Botões do Diálogo
-  btnSecondary: { 
-    backgroundColor: '#262626', 
-    paddingVertical: 14, 
-    paddingHorizontal: 20, 
-    borderRadius: 12, 
-    width: '48%', 
-    alignItems: 'center' 
-  },
-  btnSecondaryText: { color: '#FFF', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
-  
-  btnDanger: { 
-    backgroundColor: '#EF4444', 
-    paddingVertical: 14, 
-    paddingHorizontal: 20, 
-    borderRadius: 12, 
-    width: '48%', 
-    alignItems: 'center',
-    elevation: 5,
-  },
-  btnDangerText: { color: '#FFF', fontWeight: '900', fontSize: 13, letterSpacing: 0.5 },
-  
-  btnPrimary: { 
-    backgroundColor: '#F59E0B', 
-    paddingVertical: 14, 
-    paddingHorizontal: 20, 
-    borderRadius: 12, 
-    width: '48%', 
-    alignItems: 'center',
-    elevation: 5,
-  },
-  btnPrimaryText: { color: '#000', fontWeight: '900', fontSize: 13, letterSpacing: 0.5 },
 });

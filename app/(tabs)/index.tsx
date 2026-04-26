@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -34,7 +34,7 @@ export default function DashboardScreen() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   
-  // Estados de Usuário (Dinâmicos)
+  // Estados de Usuário
   const [userName, setUserName] = useState('Lojista');
   const [userRole, setUserRole] = useState('ADMIN');
   
@@ -43,13 +43,12 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [greeting, setGreeting] = useState('');
 
-  // 1. Carrega as informações locais do usuário logado
+  // 1. Carrega as informações locais do usuário
   const loadUserData = async () => {
     try {
       const userStr = await SecureStore.getItemAsync('menuflow_user');
       if (userStr) {
         const user = JSON.parse(userStr);
-        // Pega apenas o primeiro nome (Ex: "Rodrigo Santos" -> "Rodrigo")
         const firstName = user.name ? user.name.split(' ')[0] : 'Lojista';
         setUserName(firstName);
         setUserRole(user.role || 'ADMIN');
@@ -59,7 +58,7 @@ export default function DashboardScreen() {
     }
   };
 
-  // 2. Busca os dados da API
+  // 2. Busca os dados da API (Dashboard Completo)
   const fetchData = async () => {
     try {
       const response = await api.get('/admin/dashboard');
@@ -73,16 +72,19 @@ export default function DashboardScreen() {
     }
   };
 
-  useEffect(() => {
-    // Define a saudação baseada na hora
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting('Bom dia');
-    else if (hour < 18) setGreeting('Boa tarde');
-    else setGreeting('Boa noite');
+  // MÁGICA DO RE-FETCH: Executa sempre que a tela ganha foco
+  useFocusEffect(
+    useCallback(() => {
+      // Define a saudação baseada na hora toda vez que volta pro dash
+      const hour = new Date().getHours();
+      if (hour < 12) setGreeting('Bom dia');
+      else if (hour < 18) setGreeting('Boa tarde');
+      else setGreeting('Boa noite');
 
-    loadUserData();
-    fetchData();
-  }, []);
+      loadUserData();
+      fetchData();
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -107,7 +109,6 @@ export default function DashboardScreen() {
     );
   }
 
-  // Verifica se é Super Admin para mudar a cor da tag
   const isSuperAdmin = userRole === 'SUPER_ADMIN';
 
   return (
@@ -123,10 +124,9 @@ export default function DashboardScreen() {
             <Text style={styles.subtitle}>Resumo do seu império</Text>
           </View>
           
-          {/* TAG DINÂMICA */}
           <View style={[
             styles.adminBadge, 
-            !isSuperAdmin && styles.adminBadgeRegular // Aplica estilo verde se for apenas ADMIN
+            !isSuperAdmin && styles.adminBadgeRegular 
           ]}>
             <Text style={[
               styles.adminBadgeText,
@@ -148,7 +148,6 @@ export default function DashboardScreen() {
           <Text style={styles.sectionSubtitle}>{brands.length} {brands.length === 1 ? 'LOJA' : 'LOJAS'}</Text>
         </View>
 
-        {/* LISTA DE LOJAS */}
         <FlatList
           data={brands}
           keyExtractor={(item) => item.id}
@@ -198,87 +197,32 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0A0A0A' },
   container: { flex: 1, paddingHorizontal: 20 },
   centered: { flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center' },
-  
-  // Header
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 30 },
   greeting: { fontSize: 24, fontWeight: '900', color: '#FFF' },
   subtitle: { fontSize: 14, color: '#888', marginTop: 4 },
-  
-  // Badge do Admin (Dourado por padrão)
   adminBadge: { backgroundColor: '#F59E0B20', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#F59E0B50' },
   adminBadgeText: { color: '#F59E0B', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  // Badge do Admin Regular (Verde Esmeralda)
   adminBadgeRegular: { backgroundColor: '#10B98120', borderColor: '#10B98150' },
   adminBadgeTextRegular: { color: '#10B981' },
-  
-  // Métricas
   metricsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 35 },
-  metricCard: {
-    backgroundColor: '#171717',
-    width: '48%',
-    padding: 20,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#262626',
-    // Sombra sutil para destacar os cards
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 3,
-  },
+  metricCard: { backgroundColor: '#171717', width: '48%', padding: 20, borderRadius: 24, borderWidth: 1, borderColor: '#262626', elevation: 3 },
   metricIconContainer: { backgroundColor: '#F59E0B20', width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   metricValue: { fontSize: 32, fontWeight: '900', color: '#FFF' },
   metricLabel: { color: '#888', fontSize: 12, marginTop: 4, fontWeight: '700', textTransform: 'uppercase' },
-  
-  // Lista
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 15 },
   sectionTitle: { color: '#FFF', fontSize: 20, fontWeight: '900' },
   sectionSubtitle: { color: '#888', fontSize: 12, fontWeight: 'bold', marginBottom: 3 },
   listContent: { paddingBottom: 40 },
-  
   emptyContainer: { alignItems: 'center', justifyContent: 'center', marginTop: 50 },
   emptyText: { color: '#666', marginTop: 15, fontSize: 15, fontWeight: '500' },
-  
-  // Cards de Marca
-  brandCard: {
-    backgroundColor: '#171717',
-    borderRadius: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#262626',
-    overflow: 'hidden',
-  },
-  brandCardContent: {
-    flexDirection: 'row',
-    padding: 20,
-    alignItems: 'center',
-  },
-  brandAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 15,
-    backgroundColor: '#262626',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 15,
-  },
+  brandCard: { backgroundColor: '#171717', borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: '#262626', overflow: 'hidden' },
+  brandCardContent: { flexDirection: 'row', padding: 20, alignItems: 'center' },
+  brandAvatar: { width: 50, height: 50, borderRadius: 15, backgroundColor: '#262626', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   brandAvatarText: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
   brandInfo: { flex: 1 },
   brandName: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
   brandSlug: { color: '#888', fontSize: 14, marginTop: 2 },
-  
-  // Footer do Card
-  brandCardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#1A1A1A',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#262626',
-  },
+  brandCardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1A1A1A', paddingHorizontal: 20, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#262626' },
   badge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F59E0B20', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   badgeText: { color: '#F59E0B', fontSize: 12, fontWeight: 'bold' },
 });
