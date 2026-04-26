@@ -72,16 +72,7 @@ export default function LoginScreen() {
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
       // 4. SMART ROUTING
-      if (user.role === 'SUPER_ADMIN' || (user.brandIds && user.brandIds.length > 1)) {
-        router.replace('/(tabs)');
-      } else if (user.brandIds && user.brandIds.length === 1) {
-        router.replace(`/brand/${user.brandIds[0]}` as any);
-      } else {
-        // Alerta de Bloqueio (Erro - Vermelho)
-        showAlert('Sem Acesso', 'Nenhuma loja vinculada a este usuário.', 'lock', '#EF4444');
-        await SecureStore.deleteItemAsync('menuflow_token');
-        await SecureStore.deleteItemAsync('menuflow_user');
-      }
+      router.replace('/(tabs)');
 
     } catch (error: any) {
       console.log(error.response);
