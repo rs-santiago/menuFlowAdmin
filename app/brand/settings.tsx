@@ -32,7 +32,7 @@ export default function BrandSettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>('basic');
-  
+
   // Imagens
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [heroImage, setHeroImage] = useState<string | null>(null);
@@ -59,7 +59,7 @@ export default function BrandSettingsScreen() {
     try {
       const res = await api.get(`/admin/brands/${id}`);
       const b = res.data;
-      
+
       setLogoUrl(b.logoUrl || null);
       setHeroImage(b.heroImage || null);
       setFeatures(b.features || []);
@@ -103,7 +103,7 @@ export default function BrandSettingsScreen() {
     }
 
     setBrandData(newData);
-    
+
     // Limpa erro ao digitar
     if (errors[field]) {
       const newErrors = { ...errors };
@@ -131,22 +131,40 @@ export default function BrandSettingsScreen() {
     if (!result.canceled) {
       if (type === 'logo') setLogoUrl(result.assets[0].uri);
       else setHeroImage(result.assets[0].uri);
-      
+
       // Limpa erro de imagem
-      if (type === 'logo' && errors.logoUrl) { const e = {...errors}; delete e.logoUrl; setErrors(e); }
-      if (type === 'hero' && errors.heroImage) { const e = {...errors}; delete e.heroImage; setErrors(e); }
+      if (type === 'logo' && errors.logoUrl) { const e = { ...errors }; delete e.logoUrl; setErrors(e); }
+      if (type === 'hero' && errors.heroImage) { const e = { ...errors }; delete e.heroImage; setErrors(e); }
     }
   };
 
   const uploadFile = async (uri: string) => {
     if (uri.startsWith('http')) return uri; // Já é URL da nuvem
+    
     const formData = new FormData();
     const filename = uri.split('/').pop() || 'image.jpg';
     const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1]}` : `image/jpeg`;
+    
+    // 1. GARANTIA DO MIME TYPE CORRETO (Evita o travamento do celular)
+    let ext = match ? match[1].toLowerCase() : 'jpeg';
+    if (ext === 'jpg') ext = 'jpeg';
+    const type = `image/${ext}`;
+
+    // 2. MONTAGEM EXATA DO ARQUIVO PARA REACT NATIVE
     // @ts-ignore
-    formData.append('image', { uri, name: filename, type });
-    const res = await api.post('/admin/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }, transformRequest: (d) => d });
+    formData.append('image', {
+      uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+      name: filename,
+      type: type,
+    });
+
+    // 3. O DISPARO (Igual ao do ProductForm que já funciona)
+    const res = await api.post('/admin/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
     return res.data.url;
   };
 
@@ -169,12 +187,10 @@ export default function BrandSettingsScreen() {
     if (!brandData.aboutTitle) errs.aboutTitle = "Obrigatório";
     if (!/^\d{4}$/.test(brandData.since)) errs.since = "Ano com 4 dígitos";
     if (!brandData.whatsapp || brandData.whatsapp.length < 10) errs.whatsapp = "Telefone inválido";
-    
+
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
-
-  const hasSectionError = (fields: string[]) => fields.some(f => errors[f]);
 
   // --- SALVAR ---
   const handleSave = async () => {
@@ -191,20 +207,43 @@ export default function BrandSettingsScreen() {
 
     setSaving(true);
     try {
+      // Tenta fazer o upload das imagens (se houver)
       const finalLogo = logoUrl ? await uploadFile(logoUrl) : null;
       const finalHero = heroImage ? await uploadFile(heroImage) : null;
 
-      await api.patch(`/admin/brands/${id}/settings`, {
+      const payload = {
         ...brandData,
         logoUrl: finalLogo,
         heroImage: finalHero,
         features,
         schedules
-      });
+      };
+
+      console.log("=== INICIANDO PATCH ===");
+      console.log("URL:", `/admin/brands/${id}/settings`);
+      // Mostramos apenas as chaves para não poluir demais o log, 
+      // mas você pode usar JSON.stringify(payload) se quiser ver os dados exatos.
+      console.log("Payload enviado (Chaves):", Object.keys(payload));
+
+      await api.patch(`/admin/brands/${id}/settings`, payload);
 
       setAlertConfig({ visible: true, title: 'Sucesso', message: 'Todas as configurações salvas!', iconName: 'check-circle', iconColor: '#10B981' });
-    } catch (e) {
-      console.log(e);
+    } catch (error: any) {
+      console.error("=== ERRO CRÍTICO NO HANDLESAVE ===");
+
+      // Tratamento aprofundado do Axios
+      if (error.response) {
+        // A requisição foi feita e o servidor (Vercel) respondeu com um código de status fora do range 2xx
+        console.error("Erro da Vercel (Status):", error.response.status);
+        console.error("Dados da Resposta:", error.response.data);
+      } else if (error.request) {
+        // A requisição foi feita mas não houve resposta (O Network Error puro)
+        console.error("Sem resposta do servidor (Network Error). Request details:", error.request);
+      } else {
+        // Algo aconteceu na configuração da requisição que acionou um erro
+        console.error("Erro de configuração do Axios:", error.message);
+      }
+
       setAlertConfig({ visible: true, title: 'Erro', message: 'Falha ao salvar. Tente novamente.', iconName: 'x-circle', iconColor: '#EF4444' });
     } finally {
       setSaving(false);
@@ -213,24 +252,6 @@ export default function BrandSettingsScreen() {
 
   if (loading) return <View style={styles.centered}><ActivityIndicator color="#F59E0B" /></View>;
 
-  // --- COMPONENTE ACORDEÃO INTERNO ---
-  const Accordion = ({ title, section, errorFields, children }: any) => {
-    const isOpen = expandedSection === section;
-    const isError = hasSectionError(errorFields);
-    return (
-      <View style={[styles.accordionCard, isError && styles.accordionErrorBorder]}>
-        <TouchableOpacity style={styles.accordionHeader} onPress={() => setExpandedSection(isOpen ? null : section)} activeOpacity={0.7}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={[styles.accordionTitle, isError && { color: '#EF4444' }]}>{title}</Text>
-            {isError && <Feather name="alert-circle" size={16} color="#EF4444" style={{ marginLeft: 8 }} />}
-          </View>
-          <Feather name={isOpen ? "chevron-up" : "chevron-down"} size={22} color="#888" />
-        </TouchableOpacity>
-        {isOpen && <View style={styles.accordionBody}>{children}</View>}
-      </View>
-    );
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <Stack.Screen options={{ title: 'Gerenciar Loja', headerTintColor: '#F59E0B', headerStyle: { backgroundColor: '#0A0A0A' } }} />
@@ -238,8 +259,14 @@ export default function BrandSettingsScreen() {
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
           {/* 1. BÁSICO */}
-          <Accordion title="Identificação da Loja" section="basic" errorFields={['name', 'slug', 'surname', 'logoUrl']}>
-            
+          <Accordion
+            title="Identificação da Loja"
+            section="basic"
+            errorFields={['name', 'slug', 'surname', 'logoUrl']}
+            expandedSection={expandedSection}
+            setExpandedSection={setExpandedSection}
+            errors={errors}
+          >
             <TouchableOpacity style={[styles.imagePickerSquare, { alignSelf: 'center', width: 120, height: 120, marginBottom: 20 }]} onPress={() => pickImage('logo')}>
               {logoUrl ? <Image source={{ uri: logoUrl }} style={styles.uploadedImage} /> : <Feather name="camera" size={30} color="#666" />}
               <Text style={styles.imagePickerText}>Logo (1:1)</Text>
@@ -262,15 +289,22 @@ export default function BrandSettingsScreen() {
           </Accordion>
 
           {/* 2. IDENTIDADE VISUAL */}
-          <Accordion title="Identidade Visual (Cores)" section="colors" errorFields={['colorPrimary', 'colorPrimaryHover', 'colorBg']}>
+          <Accordion
+            title="Identidade Visual (Cores)"
+            section="colors"
+            errorFields={['colorPrimary', 'colorPrimaryHover', 'colorBg']}
+            expandedSection={expandedSection}
+            setExpandedSection={setExpandedSection}
+            errors={errors}
+          >
             {['colorPrimary', 'colorPrimaryHover', 'colorBg'].map((field) => (
               <View key={field} style={{ marginBottom: 15 }}>
                 <Text style={styles.label}>{field.toUpperCase()} {errors[field] && <Text style={styles.errorText}>({errors[field]})</Text>}</Text>
                 <View style={styles.colorRow}>
                   <View style={[styles.colorPreview, { backgroundColor: brandData[field as keyof typeof brandData] || '#171717' }]} />
-                  <TextInput 
-                    style={[styles.input, { flex: 1, marginLeft: 15 }, errors[field] && styles.inputError]} 
-                    value={brandData[field as keyof typeof brandData]} 
+                  <TextInput
+                    style={[styles.input, { flex: 1, marginLeft: 15 }, errors[field] && styles.inputError]}
+                    value={brandData[field as keyof typeof brandData]}
                     onChangeText={(t) => updateField(field as any, t)}
                     autoCapitalize="characters"
                   />
@@ -280,10 +314,16 @@ export default function BrandSettingsScreen() {
           </Accordion>
 
           {/* 3. HERO & MARKETING */}
-          <Accordion title="Conteúdo Principal (Hero)" section="hero" errorFields={['heroImage', 'heroTitle', 'heroHighlight', 'heroDescription', 'tagline']}>
-            
+          <Accordion
+            title="Conteúdo Principal (Hero)"
+            section="hero"
+            errorFields={['heroImage', 'heroTitle', 'heroHighlight', 'heroDescription', 'tagline']}
+            expandedSection={expandedSection}
+            setExpandedSection={setExpandedSection}
+            errors={errors}
+          >
             <Text style={styles.label}>IMAGEM DE CAPA (BACKGROUND) {errors.heroImage && <Text style={styles.errorText}>*</Text>}</Text>
-            <TouchableOpacity style={[styles.imagePickerSquare, { width: '100%', aspectRatio: 16/9, marginBottom: 20 }]} onPress={() => pickImage('hero')}>
+            <TouchableOpacity style={[styles.imagePickerSquare, { width: '100%', aspectRatio: 16 / 9, marginBottom: 20 }]} onPress={() => pickImage('hero')}>
               {heroImage ? <Image source={{ uri: heroImage }} style={styles.uploadedImage} /> : <Feather name="image" size={30} color="#666" />}
               <Text style={styles.imagePickerText}>Capa (16:9)</Text>
               {errors.heroImage && <Text style={styles.errorText}>Falta Capa</Text>}
@@ -291,7 +331,7 @@ export default function BrandSettingsScreen() {
 
             <Text style={styles.label}>TÍTULO PRINCIPAL {errors.heroTitle && <Text style={styles.errorText}>*</Text>}</Text>
             <TextInput style={[styles.input, { marginBottom: 15 }]} value={brandData.heroTitle} onChangeText={(t) => updateField('heroTitle', t)} />
-            
+
             <Text style={styles.label}>PALAVRA EM DESTAQUE (HIGHLIGHT) {errors.heroHighlight && <Text style={styles.errorText}>*</Text>}</Text>
             <TextInput style={[styles.input, { marginBottom: 15 }]} value={brandData.heroHighlight} onChangeText={(t) => updateField('heroHighlight', t)} />
 
@@ -303,19 +343,26 @@ export default function BrandSettingsScreen() {
           </Accordion>
 
           {/* 4. SOBRE NÓS */}
-          <Accordion title="Seção Sobre a Empresa" section="about" errorFields={['aboutTitle', 'aboutHighlight', 'since', 'aboutDescription', 'aboutSubText']}>
+          <Accordion
+            title="Seção Sobre a Empresa"
+            section="about"
+            errorFields={['aboutTitle', 'aboutHighlight', 'since', 'aboutDescription', 'aboutSubText']}
+            expandedSection={expandedSection}
+            setExpandedSection={setExpandedSection}
+            errors={errors}
+          >
             <Text style={styles.label}>TÍTULO DA SEÇÃO {errors.aboutTitle && <Text style={styles.errorText}>*</Text>}</Text>
             <TextInput style={[styles.input, { marginBottom: 15 }]} value={brandData.aboutTitle} onChangeText={(t) => updateField('aboutTitle', t)} />
 
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
-               <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>DESTAQUE</Text>
-                  <TextInput style={styles.input} value={brandData.aboutHighlight} onChangeText={(t) => updateField('aboutHighlight', t)} />
-               </View>
-               <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>FUNDAÇÃO (ANO) {errors.since && <Text style={styles.errorText}>*</Text>}</Text>
-                  <TextInput style={[styles.input, errors.since && styles.inputError]} value={brandData.since} onChangeText={(t) => updateField('since', t)} keyboardType="numeric" maxLength={4} />
-               </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>DESTAQUE</Text>
+                <TextInput style={styles.input} value={brandData.aboutHighlight} onChangeText={(t) => updateField('aboutHighlight', t)} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>FUNDAÇÃO (ANO) {errors.since && <Text style={styles.errorText}>*</Text>}</Text>
+                <TextInput style={[styles.input, errors.since && styles.inputError]} value={brandData.since} onChangeText={(t) => updateField('since', t)} keyboardType="numeric" maxLength={4} />
+              </View>
             </View>
 
             <Text style={styles.label}>HISTÓRIA / DESCRIÇÃO {errors.aboutDescription && <Text style={styles.errorText}>*</Text>}</Text>
@@ -326,27 +373,41 @@ export default function BrandSettingsScreen() {
           </Accordion>
 
           {/* 5. DIFERENCIAIS (FEATURES) */}
-          <Accordion title="Diferenciais (Tags)" section="features" errorFields={[]}>
-             <View style={{ flexDirection: 'row', marginBottom: 15 }}>
-                <TextInput style={[styles.input, { flex: 1, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} value={featureInput} onChangeText={setFeatureInput} placeholder="Ex: Wi-fi Grátis" placeholderTextColor="#444" />
-                <TouchableOpacity style={styles.addBtn} onPress={addFeature}>
-                   <Feather name="plus" size={24} color="#000" />
-                </TouchableOpacity>
-             </View>
-             <View style={styles.tagsContainer}>
-                {features.map((feat, idx) => (
-                   <View key={idx} style={styles.tagBadge}>
-                      <Text style={styles.tagText}>{feat}</Text>
-                      <TouchableOpacity onPress={() => removeFeature(feat)} style={{ marginLeft: 8 }}>
-                         <Feather name="x" size={14} color="#EF4444" />
-                      </TouchableOpacity>
-                   </View>
-                ))}
-             </View>
+          <Accordion
+            title="Diferenciais (Tags)"
+            section="features"
+            errorFields={[]}
+            expandedSection={expandedSection}
+            setExpandedSection={setExpandedSection}
+            errors={errors}
+          >
+            <View style={{ flexDirection: 'row', marginBottom: 15 }}>
+              <TextInput style={[styles.input, { flex: 1, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} value={featureInput} onChangeText={setFeatureInput} placeholder="Ex: Wi-fi Grátis" placeholderTextColor="#444" />
+              <TouchableOpacity style={styles.addBtn} onPress={addFeature}>
+                <Feather name="plus" size={24} color="#000" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.tagsContainer}>
+              {features.map((feat, idx) => (
+                <View key={idx} style={styles.tagBadge}>
+                  <Text style={styles.tagText}>{feat}</Text>
+                  <TouchableOpacity onPress={() => removeFeature(feat)} style={{ marginLeft: 8 }}>
+                    <Feather name="x" size={14} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
           </Accordion>
 
           {/* 6. CONTATOS */}
-          <Accordion title="Contatos e Endereço" section="contact" errorFields={['whatsapp', 'instagram', 'location']}>
+          <Accordion
+            title="Contatos e Endereço"
+            section="contact"
+            errorFields={['whatsapp', 'instagram', 'location']}
+            expandedSection={expandedSection}
+            setExpandedSection={setExpandedSection}
+            errors={errors}
+          >
             <Text style={styles.label}>WHATSAPP (NÚMEROS) {errors.whatsapp && <Text style={styles.errorText}>*</Text>}</Text>
             <TextInput style={[styles.input, { marginBottom: 5 }]} keyboardType="numeric" value={brandData.whatsapp} onChangeText={(t) => updateField('whatsapp', t)} />
             <Text style={styles.helperText}>Exibição no site: {brandData.whatsappDisplay || '---'}</Text>
@@ -360,9 +421,16 @@ export default function BrandSettingsScreen() {
           </Accordion>
 
           {/* 7. HORÁRIOS */}
-          <Accordion title="Horários de Funcionamento" section="schedules" errorFields={[]}>
+          <Accordion
+            title="Horários de Funcionamento"
+            section="schedules"
+            errorFields={[]}
+            expandedSection={expandedSection}
+            setExpandedSection={setExpandedSection}
+            errors={errors}
+          >
             {schedules.map((item, index) => (
-              <View key={index} style={[styles.dayRow, item.closed && { opacity: 0.5 }]}>
+              <View key={item.dayOfWeek} style={[styles.dayRow, item.closed && { opacity: 0.5 }]}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.dayLabel}>{DAYS_LABELS[item.dayOfWeek]}</Text>
                 </View>
@@ -392,11 +460,30 @@ export default function BrandSettingsScreen() {
   );
 }
 
+// --- COMPONENTE ACORDEÃO (MOVIDO PARA FORA) ---
+const Accordion = ({ title, section, errorFields, children, expandedSection, setExpandedSection, errors }: any) => {
+  const isOpen = expandedSection === section;
+  const isError = errorFields.some((f: string) => errors && errors[f]);
+
+  return (
+    <View style={[styles.accordionCard, isError && styles.accordionErrorBorder]}>
+      <TouchableOpacity style={styles.accordionHeader} onPress={() => setExpandedSection(isOpen ? null : section)} activeOpacity={0.7}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={[styles.accordionTitle, isError && { color: '#EF4444' }]}>{title}</Text>
+          {isError && <Feather name="alert-circle" size={16} color="#EF4444" style={{ marginLeft: 8 }} />}
+        </View>
+        <Feather name={isOpen ? "chevron-up" : "chevron-down"} size={22} color="#888" />
+      </TouchableOpacity>
+      {isOpen && <View style={styles.accordionBody}>{children}</View>}
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0A0A0A' },
   container: { padding: 20, paddingBottom: 50 },
   centered: { flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center' },
-  
+
   // Acordeão
   accordionCard: { backgroundColor: '#121212', borderRadius: 20, marginBottom: 15, borderWidth: 1, borderColor: '#262626', overflow: 'hidden' },
   accordionErrorBorder: { borderColor: '#EF444450' },
@@ -430,7 +517,7 @@ const styles = StyleSheet.create({
   dayRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#171717', padding: 12, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: '#262626' },
   dayLabel: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
   timeInputs: { flexDirection: 'row', alignItems: 'center' },
-  
+
   saveBtn: { backgroundColor: '#F59E0B', padding: 20, borderRadius: 18, alignItems: 'center', marginTop: 20, elevation: 5 },
   saveBtnText: { color: '#000', fontWeight: '900', fontSize: 15, letterSpacing: 0.5 }
 });
