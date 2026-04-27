@@ -204,6 +204,7 @@ export default function BrandSettingsScreen() {
 
       setAlertConfig({ visible: true, title: 'Sucesso', message: 'Todas as configurações salvas!', iconName: 'check-circle', iconColor: '#10B981' });
     } catch (e) {
+      console.log(e);
       setAlertConfig({ visible: true, title: 'Erro', message: 'Falha ao salvar. Tente novamente.', iconName: 'x-circle', iconColor: '#EF4444' });
     } finally {
       setSaving(false);

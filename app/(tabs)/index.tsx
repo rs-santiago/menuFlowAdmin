@@ -1,7 +1,8 @@
+import { registerForPushNotificationsAsync } from '@/services/notifications';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -79,6 +80,29 @@ export default function DashboardScreen() {
       setRefreshing(false);
     }
   };
+
+  useEffect(() => {
+  async function setupPush() {
+    const token = await registerForPushNotificationsAsync();
+    if (token) {
+      try {
+        // PEGUE O ID DE UM USER VÁLIDO NO SEU PRISMA STUDIO PARA TESTAR
+        const userStr = await SecureStore.getItemAsync('menuflow_user');
+        const user = userStr ? JSON.parse(userStr) : null;
+        const idDoLojista = user?.id; 
+        
+        await api.patch('/admin/user/push-token', { 
+          token: token,
+          userId: idDoLojista 
+        });
+        console.log("Token salvo no banco com sucesso!");
+      } catch (error) {
+        console.error("Erro ao salvar token no banco:", error);
+      }
+    }
+  }
+  setupPush();
+}, []);
 
   useFocusEffect(
     useCallback(() => {

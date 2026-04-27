@@ -36,17 +36,18 @@ interface Category {
 export default function BrandProductsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  
+
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  
+  const [activeOrdersCount, setActiveOrdersCount] = useState(0);
+
   // Estados para os Modais
-  const [modalVisible, setModalVisible] = useState(false); // Bottom Sheet
+  const [modalVisible, setModalVisible] = useState(false); // Bottom Sheet de Opções
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [alertConfig, setAlertConfig] = useState({
-    visible: false, title: '', message: '', iconName: 'info' as any, iconColor: '#F59E0B', 
+    visible: false, title: '', message: '', iconName: 'info' as any, iconColor: '#F59E0B',
     showCancel: false, confirmText: 'OK', onConfirm: () => hideAlert()
   });
 
@@ -58,12 +59,18 @@ export default function BrandProductsScreen() {
 
   const fetchData = async () => {
     try {
-      const [prodRes, catRes] = await Promise.all([
+      const [prodRes, catRes, ordersRes] = await Promise.all([
         api.get(`/admin/brands/${id}/products`),
-        api.get(`/admin/brands/${id}/categories`)
+        api.get(`/admin/brands/${id}/categories`),
+        api.get(`/admin/brands/${id}/orders`)
       ]);
       setProducts(prodRes.data);
       setCategories(catRes.data);
+      // Filtramos os pedidos que não estão DELIVERED ou CANCELLED
+      const activeOrders = ordersRes.data.filter((order: any) =>
+        ['PENDING', 'PREPARING', 'DISPATCHED'].includes(order.status)
+      );
+      setActiveOrdersCount(activeOrders.length);
     } catch (error) {
       showAlert('Erro', 'Não foi possível carregar os dados.', 'x-circle', '#EF4444');
     } finally {
@@ -71,7 +78,6 @@ export default function BrandProductsScreen() {
     }
   };
 
-  // Atualiza sempre que a tela ganha foco
   useFocusEffect(
     useCallback(() => {
       fetchData();
@@ -101,8 +107,7 @@ export default function BrandProductsScreen() {
     }
   };
 
-  // Lógica de Filtro
-  const filteredProducts = selectedCategory 
+  const filteredProducts = selectedCategory
     ? products.filter(p => p.categoryId === selectedCategory)
     : products;
 
@@ -118,45 +123,89 @@ export default function BrandProductsScreen() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
       <Stack.Screen options={{ headerShown: false }} />
-      
+
       <View style={styles.container}>
         {/* HEADER */}
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color="#F59E0B" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Produtos da <Text style={{color: '#F59E0B'}}>Loja</Text></Text>
+          <Text style={styles.headerTitle}>Gestão da <Text style={{ color: '#F59E0B' }}>Unidade</Text></Text>
         </View>
 
-        {/* BOTÃO GERENCIAR CATEGORIAS (OPÇÃO 2) */}
-        <TouchableOpacity 
-          style={styles.categoryActionBtn}
-          onPress={() => router.push(`/brand/categories?brandId=${id}`)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.categoryActionContent}>
-            <View style={styles.categoryIconCircle}>
-              <Feather name="list" size={18} color="#F59E0B" />
+        {/* GRID DE GESTÃO RÁPIDA (PEDIDOS + CATEGORIAS) */}
+        {/* GRID DE GESTÃO RÁPIDA */}
+        <View style={styles.managementGrid}>
+          {/* Card de Pedidos (Mantido) */}
+          <TouchableOpacity
+            style={[styles.manageCard, { borderColor: '#F59E0B50' }]}
+            onPress={() => router.push({ pathname: "/brand/orders", params: { brandId: id } })}
+            activeOpacity={0.8}
+          >
+            <View style={styles.manageIconContainer}>
+              <Feather name="shopping-bag" size={20} color="#F59E0B" />
+              {activeOrdersCount > 0 && (
+                <View style={styles.orderBadge}>
+                  <Text style={styles.orderBadgeText}>{activeOrdersCount}</Text>
+                </View>
+              )}
             </View>
-            <View>
-              <Text style={styles.categoryActionTitle}>Gerenciar Categorias</Text>
-              <Text style={styles.categoryActionSubtitle}>Organize seu cardápio por seções</Text>
-            </View>
-          </View>
-          <Feather name="chevron-right" size={20} color="#333" />
-        </TouchableOpacity>
+            <Text style={styles.manageTitle}>Pedidos</Text>
+            <Text style={styles.manageSubtitle}>Gerenciar fluxo</Text>
+          </TouchableOpacity>
 
-        {/* FILTRO HORIZONTAL */}
+          {/* Card de Categorias (Mantido) */}
+          <TouchableOpacity
+            style={styles.manageCard}
+            onPress={() => router.push(`/brand/categories?brandId=${id}`)}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.manageIconContainer, { backgroundColor: '#262626' }]}>
+              <Feather name="layers" size={20} color="#888" />
+            </View>
+            <Text style={styles.manageTitle}>Categorias</Text>
+            <Text style={styles.manageSubtitle}>Organizar seções</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* SEGUNDA LINHA DE GESTÃO */}
+        <View style={[styles.managementGrid, { marginTop: -10 }]}>
+          <TouchableOpacity
+            style={styles.manageCard}
+            onPress={() => router.push({ pathname: "/brand/reports", params: { brandId: id } })}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.manageIconContainer, { backgroundColor: '#262626' }]}>
+              <Feather name="bar-chart-2" size={20} color="#3B82F6" />
+            </View>
+            <Text style={styles.manageTitle}>Relatórios</Text>
+            <Text style={styles.manageSubtitle}>Ver desempenho</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.manageCard}
+            onPress={() => { /* Futuro: Configurações da Unidade */ }}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.manageIconContainer, { backgroundColor: '#262626' }]}>
+              <Feather name="settings" size={20} color="#888" />
+            </View>
+            <Text style={styles.manageTitle}>Unidade</Text>
+            <Text style={styles.manageSubtitle}>Configurações</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* FILTRO HORIZONTAL DE CATEGORIAS */}
         <View style={styles.filterContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.filterTab, selectedCategory === null && styles.filterTabActive]}
               onPress={() => setSelectedCategory(null)}
             >
               <Text style={[styles.filterTabText, selectedCategory === null && styles.filterTabTextActive]}>Tudo</Text>
             </TouchableOpacity>
             {categories.map((cat) => (
-              <TouchableOpacity 
+              <TouchableOpacity
                 key={cat.id}
                 style={[styles.filterTab, selectedCategory === cat.id && styles.filterTabActive]}
                 onPress={() => setSelectedCategory(cat.id)}
@@ -172,15 +221,15 @@ export default function BrandProductsScreen() {
           data={filteredProducts}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
           renderItem={({ item }) => (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.productCard, !item.isAvailable && styles.productCardDisabled]}
               activeOpacity={0.7}
               onPress={() => toggleAvailability(item)}
             >
-              <Image 
-                source={{ uri: item.image || 'https://via.placeholder.com/150/171717/F59E0B?text=Sem+Foto' }} 
+              <Image
+                source={{ uri: item.image || 'https://via.placeholder.com/150/171717/F59E0B?text=Sem+Foto' }}
                 style={styles.cardImage}
               />
               <View style={styles.cardInfo}>
@@ -193,40 +242,44 @@ export default function BrandProductsScreen() {
                   <Feather name="more-vertical" size={20} color="#888" />
                 </TouchableOpacity>
                 <View style={[styles.badgeSmall, item.isAvailable ? styles.badgeActive : styles.badgeInactive]}>
-                  <Text style={[styles.badgeTextSmall, {color: item.isAvailable ? '#10B981' : '#EF4444'}]}>
+                  <Text style={[styles.badgeTextSmall, { color: item.isAvailable ? '#10B981' : '#EF4444' }]}>
                     {item.isAvailable ? 'ATIVO' : 'OFF'}
                   </Text>
                 </View>
               </View>
             </TouchableOpacity>
           )}
-          ListEmptyComponent={<Text style={styles.emptyText}>Nenhum produto nesta categoria.</Text>}
+          ListEmptyComponent={<Text style={styles.emptyText}>Nenhum produto encontrado.</Text>}
         />
 
+        {/* FAB - NOVO PRODUTO */}
         <TouchableOpacity style={styles.fab} onPress={() => router.push(`/product/form?brandId=${id}`)}>
           <Feather name="plus" size={30} color="#000" />
         </TouchableOpacity>
 
-        {/* BOTTOM SHEET DE OPÇÕES */}
+        {/* BOTTOM SHEET DE OPÇÕES DO PRODUTO */}
         <Modal animationType="slide" transparent visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
           <Pressable style={styles.modalOverlay} onPress={() => setModalVisible(false)}>
             <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
               <View style={styles.modalHandle} />
               <Text style={styles.modalTitle}>Gerir <Text style={{ color: '#F59E0B' }}>{selectedProduct?.name}</Text></Text>
+
               <TouchableOpacity style={styles.modalOption} onPress={() => { setModalVisible(false); router.push(`/product/form?brandId=${id}&productId=${selectedProduct?.id}`); }}>
                 <Feather name="edit-2" size={20} color="#FFF" />
                 <Text style={styles.modalOptionText}>Editar Informações</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[styles.modalOption, styles.modalOptionDanger]}
                 onPress={() => {
                   setModalVisible(false);
-                  setTimeout(() => showAlert('Confirmar Exclusão', `Deseja apagar ${selectedProduct?.name}?`, 'trash-2', '#EF4444', 'APAGAR', true, performFinalDelete), 300);
+                  setTimeout(() => showAlert('Confirmar Exclusão', `Deseja apagar permanentemente ${selectedProduct?.name}?`, 'trash-2', '#EF4444', 'APAGAR', true, performFinalDelete), 300);
                 }}
               >
                 <Feather name="trash-2" size={20} color="#EF4444" />
                 <Text style={[styles.modalOptionText, { color: '#EF4444' }]}>Eliminar Produto</Text>
               </TouchableOpacity>
+
               <TouchableOpacity style={styles.modalCancelButton} onPress={() => setModalVisible(false)}>
                 <Text style={styles.modalCancelText}>Cancelar</Text>
               </TouchableOpacity>
@@ -234,7 +287,8 @@ export default function BrandProductsScreen() {
           </Pressable>
         </Modal>
 
-        <CustomAlert 
+        {/* COMPONENTE DE ALERTA PERSONALIZADO */}
+        <CustomAlert
           visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message}
           iconName={alertConfig.iconName} iconColor={alertConfig.iconColor} confirmText={alertConfig.confirmText}
           showCancel={alertConfig.showCancel} onCancel={hideAlert} onConfirm={alertConfig.onConfirm}
@@ -251,13 +305,15 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, marginBottom: 25 },
   backButton: { width: 40, height: 40, justifyContent: 'center' },
   headerTitle: { color: '#FFF', fontSize: 22, fontWeight: '900' },
-  
-  // Categorias Action Btn
-  categoryActionBtn: { backgroundColor: '#171717', padding: 15, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, borderWidth: 1, borderColor: '#262626' },
-  categoryActionContent: { flexDirection: 'row', alignItems: 'center' },
-  categoryIconCircle: { width: 40, height: 40, backgroundColor: '#F59E0B15', borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  categoryActionTitle: { color: '#FFF', fontSize: 15, fontWeight: 'bold' },
-  categoryActionSubtitle: { color: '#666', fontSize: 12, marginTop: 2 },
+
+  // Grid de Gestão
+  managementGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 },
+  manageCard: { backgroundColor: '#171717', width: '48%', padding: 18, borderRadius: 24, borderWidth: 1, borderColor: '#262626' },
+  manageIconContainer: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#F59E0B15', justifyContent: 'center', alignItems: 'center', marginBottom: 12, position: 'relative' },
+  manageTitle: { color: '#FFF', fontSize: 15, fontWeight: 'bold' },
+  manageSubtitle: { color: '#666', fontSize: 11, marginTop: 2 },
+  orderBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#EF4444', borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#171717' },
+  orderBadgeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
 
   // Filtros
   filterContainer: { marginBottom: 20 },
@@ -267,7 +323,7 @@ const styles = StyleSheet.create({
   filterTabText: { color: '#888', fontWeight: 'bold', fontSize: 13 },
   filterTabTextActive: { color: '#F59E0B' },
 
-  // Cards
+  // Listagem de Produtos
   productCard: { backgroundColor: '#171717', padding: 12, borderRadius: 20, marginBottom: 12, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#262626' },
   productCardDisabled: { opacity: 0.5, backgroundColor: '#121212' },
   cardImage: { width: 70, height: 70, borderRadius: 14, backgroundColor: '#262626' },
@@ -282,9 +338,9 @@ const styles = StyleSheet.create({
   badgeTextSmall: { fontSize: 10, fontWeight: 'bold' },
   emptyText: { color: '#444', textAlign: 'center', marginTop: 50 },
   fab: { position: 'absolute', right: 20, bottom: 30, backgroundColor: '#F59E0B', width: 65, height: 65, borderRadius: 35, justifyContent: 'center', alignItems: 'center', elevation: 8 },
-  
-  // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
+
+  // Modal Bottom Sheet
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#171717', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 45, borderWidth: 1, borderColor: '#262626' },
   modalHandle: { width: 40, height: 4, backgroundColor: '#333', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
   modalTitle: { color: '#FFF', fontSize: 19, fontWeight: 'bold', marginBottom: 25, textAlign: 'center' },
