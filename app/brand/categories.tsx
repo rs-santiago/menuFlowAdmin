@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomAlert from '../../components/CustomAlert';
 import api from '../../services/api';
 
+// 1. Interface Atualizada
 interface Category {
   id: string;
   name: string;
@@ -28,10 +29,14 @@ interface Category {
   isActive: boolean;
   isHighlight: boolean;
   sortOrder: number;
-  hasCustomSchedule?: boolean;
-  openTime?: string;
-  closeTime?: string;
+  activeTime?: any; // Recebe o array JSON do backend
 }
+
+// 2. Dias da Semana para o UI
+const WEEK_DAYS = [
+  { id: 0, label: 'D' }, { id: 1, label: 'S' }, { id: 2, label: 'T' }, 
+  { id: 3, label: 'Q' }, { id: 4, label: 'Q' }, { id: 5, label: 'S' }, { id: 6, label: 'S' }
+];
 
 export default function CategoriesScreen() {
   const { brandId } = useLocalSearchParams();
@@ -46,9 +51,11 @@ export default function CategoriesScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingCat, setEditingCat] = useState<Category | null>(null);
 
-  // Refs para focar automaticamente nos inputs de horário (opcional, melhora a UX)
-  const openTimeRef = useRef<TextInput>(null);
-  const closeTimeRef = useRef<TextInput>(null);
+  // Estados de Configuração de Horário Específico
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+  const [openTime, setOpenTime] = useState('');
+  const [closeTime, setCloseTime] = useState('');
 
   // Estado do CustomAlert
   const [alertConfig, setAlertConfig] = useState({
@@ -75,10 +82,8 @@ export default function CategoriesScreen() {
 
   // --- MÁSCARA DE HORÁRIO ---
   const formatTime = (value: string) => {
-    const cleaned = value.replace(/\D/g, ''); // Remove tudo que não for número
+    const cleaned = value.replace(/\D/g, '');
     let formatted = cleaned;
-    
-    // Se digitou mais de 2 números, adiciona os dois pontos (ex: 123 -> 12:3)
     if (cleaned.length > 2) {
       formatted = `${cleaned.substring(0, 2)}:${cleaned.substring(2, 4)}`;
     }
@@ -114,16 +119,46 @@ export default function CategoriesScreen() {
     }
   };
 
-  // --- ATUALIZAR CATEGORIA (MODAL) ---
+  // --- ABRIR MODAL DE CONFIGURAÇÕES ---
+  const openSettingsModal = (cat: Category) => {
+    setEditingCat({ ...cat });
+    
+    if (cat.activeTime && Array.isArray(cat.activeTime) && cat.activeTime.length > 0) {
+      setScheduleEnabled(true);
+      setSelectedDays(cat.activeTime.map((t: any) => t.day));
+      setOpenTime(cat.activeTime[0].open || '');
+      setCloseTime(cat.activeTime[0].close || '');
+    } else {
+      setScheduleEnabled(false);
+      setSelectedDays([0, 1, 2, 3, 4, 5, 6]);
+      setOpenTime('');
+      setCloseTime('');
+    }
+    
+    setEditModalVisible(true);
+  };
+
+  // --- ATUALIZAR CATEGORIA (SALVAR MODAL) ---
   const handleUpdateCategory = async () => {
     if (!editingCat) return;
 
-    // Validação simples de horário, se a chave estiver ativa
-    if (editingCat.hasCustomSchedule) {
-        if (!editingCat.openTime || editingCat.openTime.length !== 5 || !editingCat.closeTime || editingCat.closeTime.length !== 5) {
-             showAlert('Atenção', 'Por favor, preencha os horários no formato 00:00.', 'alert-circle', '#EF4444');
-             return;
-        }
+    let activeTimePayload = null;
+
+    if (scheduleEnabled) {
+      if (openTime.length !== 5 || closeTime.length !== 5) {
+        showAlert('Atenção', 'Preencha os horários no formato 00:00.', 'alert-circle', '#EF4444');
+        return;
+      }
+      if (selectedDays.length === 0) {
+        showAlert('Atenção', 'Selecione pelo menos um dia da semana.', 'alert-circle', '#EF4444');
+        return;
+      }
+      // Monta o array JSON para o backend
+      activeTimePayload = selectedDays.map(day => ({
+        day,
+        open: openTime,
+        close: closeTime
+      }));
     }
 
     setSubmitting(true);
@@ -133,9 +168,7 @@ export default function CategoriesScreen() {
         icon: editingCat.icon,
         isActive: editingCat.isActive,
         isHighlight: editingCat.isHighlight,
-        hasCustomSchedule: editingCat.hasCustomSchedule,
-        openTime: editingCat.hasCustomSchedule ? editingCat.openTime : null,
-        closeTime: editingCat.hasCustomSchedule ? editingCat.closeTime : null,
+        activeTime: activeTimePayload,
       });
       setEditModalVisible(false);
       fetchCategories();
@@ -165,6 +198,8 @@ export default function CategoriesScreen() {
 
   // --- RENDERIZAR ITEM DA LISTA ---
   const renderItem = ({ item, drag, isActive }: RenderItemParams<Category>) => {
+    const hasSchedule = item.activeTime && Array.isArray(item.activeTime) && item.activeTime.length > 0;
+
     return (
       <TouchableOpacity
         activeOpacity={0.9}
@@ -179,22 +214,29 @@ export default function CategoriesScreen() {
 
           <Text style={styles.categoryIcon}>{item.icon || '📌'}</Text>
 
-          {/* Adicionamos flex: 1 para permitir o shrink no texto longo */}
+          {/* flex: 1 garante que o conteúdo do meio não esmague os botões */}
           <View style={{ flex: 1 }}>
-            {/* Flex-wrap aqui ajuda se a tela for pequena ou a fonte for grande */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-              {/* O flexShrink garante que ele vai truncar se faltar espaco. */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 2 }}>
+              {/* flexShrink permite os '...' se for grande */}
               <Text style={styles.categoryName} numberOfLines={1}>{item.name}</Text>
               {item.isHighlight && <View style={styles.highlightBadge}><Text style={styles.highlightText}>Destaque</Text></View>}
             </View>
-            <Text style={[styles.statusText, { color: item.isActive ? '#10B981' : '#EF4444' }]}>
-              {item.isActive ? 'Visível no Cardápio' : 'Oculto do Cardápio'}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={[styles.statusText, { color: item.isActive ? '#10B981' : '#EF4444' }]}>
+                {item.isActive ? 'Visível' : 'Oculto'}
+              </Text>
+              {hasSchedule && (
+                <>
+                  <Text style={{ color: '#666', fontSize: 10, marginHorizontal: 4 }}>•</Text>
+                  <Text style={{ color: '#F59E0B', fontSize: 10, fontWeight: 'bold' }}>Horário Especial</Text>
+                </>
+              )}
+            </View>
           </View>
         </View>
 
         <View style={styles.actionsContainer}>
-          <TouchableOpacity onPress={() => { setEditingCat({ ...item }); setEditModalVisible(true); }} style={styles.actionBtn}>
+          <TouchableOpacity onPress={() => openSettingsModal(item)} style={styles.actionBtn}>
             <Feather name="settings" size={18} color="#F59E0B" />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => confirmDelete(item)} style={styles.actionBtnDanger}>
@@ -280,39 +322,57 @@ export default function CategoriesScreen() {
                       <Text style={styles.switchTitle}>Horário Específico</Text>
                       <Text style={styles.switchDesc}>Disponível apenas em certas horas do dia.</Text>
                     </View>
-                    <Switch value={editingCat.hasCustomSchedule} onValueChange={(v) => setEditingCat({ ...editingCat, hasCustomSchedule: v })} trackColor={{ false: '#262626', true: '#F59E0B80' }} thumbColor={editingCat.hasCustomSchedule ? '#F59E0B' : '#666'} />
+                    <Switch value={scheduleEnabled} onValueChange={setScheduleEnabled} trackColor={{ false: '#262626', true: '#F59E0B80' }} thumbColor={scheduleEnabled ? '#F59E0B' : '#666'} />
                   </View>
 
-                  {/* Campos de Horário Personalizado (só aparecem se ativado) */}
-                  {editingCat.hasCustomSchedule && (
-                     <View style={styles.scheduleContainer}>
-                         <View style={{ flex: 1, marginRight: 10 }}>
-                             <Text style={styles.label}>ABERTURA (HH:MM)</Text>
-                             <TextInput 
-                                ref={openTimeRef}
-                                style={[styles.modalInput, { textAlign: 'center' }]} 
-                                placeholder="00:00" 
-                                placeholderTextColor="#666" 
-                                keyboardType="number-pad" 
-                                maxLength={5}
-                                value={editingCat.openTime} 
-                                onChangeText={(t) => setEditingCat({ ...editingCat, openTime: formatTime(t) })} 
-                             />
-                         </View>
-                         <View style={{ flex: 1, marginLeft: 10 }}>
-                             <Text style={styles.label}>FECHAMENTO (HH:MM)</Text>
-                             <TextInput 
-                                ref={closeTimeRef}
-                                style={[styles.modalInput, { textAlign: 'center' }]} 
-                                placeholder="23:59" 
-                                placeholderTextColor="#666" 
-                                keyboardType="number-pad" 
-                                maxLength={5}
-                                value={editingCat.closeTime} 
-                                onChangeText={(t) => setEditingCat({ ...editingCat, closeTime: formatTime(t) })} 
-                             />
-                         </View>
-                     </View>
+                  {/* BLOCO DE HORÁRIO ESPECÍFICO */}
+                  {scheduleEnabled && (
+                    <View style={styles.scheduleBox}>
+                      <Text style={styles.label}>DIAS DA SEMANA</Text>
+                      <View style={styles.daysRow}>
+                        {WEEK_DAYS.map((day) => {
+                          const isSelected = selectedDays.includes(day.id);
+                          return (
+                            <TouchableOpacity
+                              key={day.id}
+                              style={[styles.dayCircle, isSelected && styles.dayCircleActive]}
+                              onPress={() => {
+                                if (isSelected) {
+                                  setSelectedDays(prev => prev.filter(d => d !== day.id));
+                                } else {
+                                  setSelectedDays(prev => [...prev, day.id]);
+                                }
+                              }}
+                            >
+                              <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{day.label}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      <View style={styles.timeInputRow}>
+                        <View style={{ flex: 1, marginRight: 10 }}>
+                          <Text style={styles.label}>ABERTURA</Text>
+                          <TextInput 
+                            style={[styles.modalInput, { textAlign: 'center' }]} 
+                            placeholder="00:00" placeholderTextColor="#666" 
+                            keyboardType="number-pad" maxLength={5}
+                            value={openTime} 
+                            onChangeText={(t) => setOpenTime(formatTime(t))} 
+                          />
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={styles.label}>FECHAMENTO</Text>
+                          <TextInput 
+                            style={[styles.modalInput, { textAlign: 'center' }]} 
+                            placeholder="23:59" placeholderTextColor="#666" 
+                            keyboardType="number-pad" maxLength={5}
+                            value={closeTime} 
+                            onChangeText={(t) => setCloseTime(formatTime(t))} 
+                          />
+                        </View>
+                      </View>
+                    </View>
                   )}
 
                   <TouchableOpacity style={styles.saveModalBtn} onPress={handleUpdateCategory} disabled={submitting}>
@@ -332,6 +392,7 @@ export default function CategoriesScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0A0A0A' },
+  emptyText: { color: '#444', textAlign: 'center', marginTop: 50 },
   container: { flex: 1, padding: 20 },
   description: { color: '#888', fontSize: 13, marginBottom: 20, lineHeight: 20 },
   inputRow: { flexDirection: 'row', marginBottom: 20 },
@@ -341,22 +402,21 @@ const styles = StyleSheet.create({
   // Itens da Lista
   categoryItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#171717', padding: 16, borderRadius: 18, marginBottom: 10, borderWidth: 1, borderColor: '#262626' },
   categoryItemDragging: { backgroundColor: '#262626', transform: [{ scale: 1.02 }], shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10 },
-  categoryInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }, // Margin right para não colar nos botões
+  categoryInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }, // Ajuste crucial de Layout
   dragHandle: { paddingRight: 15, paddingVertical: 10 },
   categoryIcon: { fontSize: 24, marginRight: 15 },
-  categoryName: { color: '#FFF', fontSize: 16, fontWeight: 'bold', flexShrink: 1 }, // flexShrink garante o "..." se faltar espaco
-  statusText: { fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase', marginTop: 4, letterSpacing: 0.5 },
+  categoryName: { color: '#FFF', fontSize: 16, fontWeight: 'bold', flexShrink: 1 }, // Garante as reticências se o nome for gigante
+  statusText: { fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.5 },
   highlightBadge: { backgroundColor: '#F59E0B20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: '#F59E0B40' },
   highlightText: { color: '#F59E0B', fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase' },
 
   actionsContainer: { flexDirection: 'row', gap: 10 },
   actionBtn: { padding: 8, backgroundColor: '#262626', borderRadius: 10 },
-  actionBtnDanger: { padding: 8, backgroundColor: '#EF444420', borderRadius: 10 }, // Botão de delete agora tem um feedback visual vermelho sutil
-  emptyText: { color: '#444', textAlign: 'center', marginTop: 50, fontSize: 15 },
+  actionBtnDanger: { padding: 8, backgroundColor: '#EF444420', borderRadius: 10 },
 
   // Modal
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.8)' },
-  modalContent: { backgroundColor: '#121212', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, borderWidth: 1, borderColor: '#262626', maxHeight: '90%' }, // Max height pro scrollview funcionar
+  modalContent: { backgroundColor: '#121212', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, borderWidth: 1, borderColor: '#262626', maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
   modalTitle: { color: '#FFF', fontSize: 18, fontWeight: '900', textTransform: 'uppercase', fontStyle: 'italic' },
   modalBody: { paddingBottom: 20 },
@@ -367,7 +427,14 @@ const styles = StyleSheet.create({
   switchTitle: { color: '#FFF', fontWeight: 'bold', fontSize: 14, marginBottom: 2 },
   switchDesc: { color: '#666', fontSize: 11 },
 
-  scheduleContainer: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#1A1A1A', padding: 15, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#333', borderStyle: 'dashed' },
+  // Novas classes do Schedule
+  scheduleBox: { backgroundColor: '#1A1A1A', padding: 15, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#333', borderStyle: 'dashed' },
+  daysRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, marginTop: 5 },
+  dayCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#262626', justifyContent: 'center', alignItems: 'center' },
+  dayCircleActive: { backgroundColor: '#F59E0B' },
+  dayText: { color: '#888', fontWeight: 'bold', fontSize: 14 },
+  dayTextActive: { color: '#000' },
+  timeInputRow: { flexDirection: 'row', justifyContent: 'space-between' },
 
   saveModalBtn: { backgroundColor: '#F59E0B', padding: 20, borderRadius: 18, alignItems: 'center', marginTop: 20 },
   saveModalBtnText: { color: '#000', fontWeight: '900', fontSize: 14, letterSpacing: 0.5 }
