@@ -1,138 +1,302 @@
 import { Feather } from '@expo/vector-icons';
+import * as Print from 'expo-print';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import CustomAlert from '../../components/CustomAlert';
 import api from '../../services/api';
+import { generateOrderHtml } from '../../utils/printTemplate';
 
 export default function OrderDetailsScreen() {
   const { orderId } = useLocalSearchParams();
   const router = useRouter();
+  
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [cancelAlertVisible, setCancelAlertVisible] = useState(false);
 
   const fetchOrderDetails = async () => {
     try {
-      // Podemos usar uma rota de GET específico ou o próprio GET de orders filtrado
       const response = await api.get(`/admin/orders/${orderId}`);
       setOrder(response.data);
     } catch (e) {
-      console.error(e);
+      console.error("Erro ao carregar detalhes:", e);
     } finally {
       setLoading(false);
     }
   };
 
+  // Função para Reimprimir o Cupom
+  const handleRePrint = async () => {
+    if (!order) return;
+    try {
+      // "Minha Loja" pode ser substituído por order.brand.name se você trouxer no include do Prisma
+      const html = generateOrderHtml(order, order.brand?.name || "Minha Loja", order.brand?.logoUrl || '');
+      await Print.printAsync({ html });
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao abrir gerenciador de impressão");
+    }
+  };
+
+  // Função para Atualizar Status (Aceitar, Despachar, Entregar, Cancelar)
   const updateStatus = async (newStatus: string) => {
     setUpdating(true);
     try {
       await api.patch(`/admin/orders/${orderId}/status`, { status: newStatus });
 
-      // Opcional: Se o lojista terminou o fluxo (ex: marcou como Entregue), 
-      // você pode já mandar ele de volta para a lista
+      // Se for um status finalizador, volta para a lista
       if (newStatus === 'DELIVERED' || newStatus === 'CANCELLED') {
         router.back();
       } else {
+        // Se for um status intermediário, recarrega os dados para atualizar os botões
         fetchOrderDetails();
       }
     } catch (e) {
-      alert("Erro ao atualizar status");
+      alert("Erro ao atualizar status do pedido");
     } finally {
       setUpdating(false);
     }
   };
 
-  useEffect(() => { fetchOrderDetails(); }, [orderId]);
+  useEffect(() => { 
+    if (orderId) fetchOrderDetails(); 
+  }, [orderId]);
 
-  if (loading) return <View style={styles.centered}><ActivityIndicator color="#F59E0B" /></View>;
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color="#F59E0B" size="large" />
+      </View>
+    );
+  }
+
+  const canCancel = order?.status !== 'DELIVERED' && order?.status !== 'CANCELLED';
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView style={styles.container}>
+      
+      <View style={styles.container}>
+        {/* HEADER COM BOTÃO DE VOLTAR E REIMPRIMIR */}
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Feather name="chevron-left" size={30} color="#F59E0B" />
+            <Text style={styles.headerTitle}>Pedido #{order?.displayId}</Text>
+          </TouchableOpacity>
 
-        {/* HEADER SIMPLES */}
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="chevron-left" size={30} color="#F59E0B" />
-          <Text style={styles.headerTitle}>Pedido #{order?.displayId}</Text>
-        </TouchableOpacity>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Cliente</Text>
-          <Text style={styles.customerName}>{order?.customerName}</Text>
-          <Text style={styles.customerPhone}>{order?.customerPhone}</Text>
+          <TouchableOpacity 
+            onPress={handleRePrint} 
+            style={styles.printBtnSmall}
+            activeOpacity={0.7}
+          >
+            <Feather name="printer" size={22} color="#F59E0B" />
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Itens do Pedido</Text>
-          {order?.items?.map((item: any, index: number) => (
-            <View key={index} style={styles.itemRow}>
-              <Text style={styles.itemQty}>{item.quantity}x</Text>
-              <Text style={styles.itemName}>{item.name}</Text>
-              <Text style={styles.itemPrice}>R$ {(item.price * item.quantity).toFixed(2)}</Text>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+          
+          {/* CARD DO CLIENTE */}
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Cliente</Text>
+            <Text style={styles.customerName}>{order?.customerName}</Text>
+            <View style={styles.infoRow}>
+              <Feather name="phone" size={14} color="#666" />
+              <Text style={styles.customerPhone}>{order?.customerPhone}</Text>
             </View>
-          ))}
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>R$ {order?.total.toFixed(2)}</Text>
           </View>
-        </View>
 
-        {/* AÇÕES DE STATUS */}
-        <View style={styles.actions}>
-          {order?.status === 'PENDING' && (
-            <TouchableOpacity
-              style={styles.btnPrimary}
-              onPress={() => updateStatus('PREPARING')}
-              disabled={updating}
-            >
-              <Text style={styles.btnText}>ACEITAR E PREPARAR</Text>
-            </TouchableOpacity>
-          )}
+          {/* CARD DE ITENS */}
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Itens do Pedido</Text>
+            {order?.items?.map((item: any, index: number) => (
+              <View key={index} style={styles.itemRow}>
+                <View style={styles.qtyBadge}>
+                  <Text style={styles.itemQty}>{item.quantity}x</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemName}>{item.name}</Text>
+                  {item.observations && (
+                    <Text style={styles.itemObs}>Obs: {item.observations}</Text>
+                  )}
+                </View>
+                <Text style={styles.itemPrice}>
+                  R$ {(item.price * item.quantity).toFixed(2)}
+                </Text>
+              </View>
+            ))}
 
-          {order?.status === 'PREPARING' && (
-            <TouchableOpacity
-              style={[styles.btnPrimary, { backgroundColor: '#3B82F6' }]}
-              onPress={() => updateStatus('DISPATCHED')}
-            >
-              <Text style={styles.btnText}>SAIU PARA ENTREGA</Text>
-            </TouchableOpacity>
-          )}
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total do Pedido</Text>
+              <Text style={styles.totalValue}>R$ {order?.total.toFixed(2)}</Text>
+            </View>
+          </View>
 
-          {order?.status === 'DISPATCHED' && (
-            <TouchableOpacity
-              style={[styles.btnPrimary, { backgroundColor: '#10B981' }]}
-              onPress={() => updateStatus('DELIVERED')}
-            >
-              <Text style={styles.btnText}>MARCAR COMO ENTREGUE</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+          {/* AÇÕES DE STATUS */}
+          <View style={styles.actions}>
+            {order?.status === 'PENDING' && (
+              <TouchableOpacity
+                style={styles.btnPrimary}
+                onPress={() => updateStatus('PREPARING')}
+                disabled={updating}
+              >
+                {updating ? <ActivityIndicator color="#000" /> : <Text style={styles.btnText}>ACEITAR E PREPARAR</Text>}
+              </TouchableOpacity>
+            )}
 
-      </ScrollView>
+            {order?.status === 'PREPARING' && (
+              <TouchableOpacity
+                style={[styles.btnPrimary, { backgroundColor: '#3B82F6' }]}
+                onPress={() => updateStatus('DISPATCHED')}
+                disabled={updating}
+              >
+                {updating ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.btnText, { color: '#FFF' }]}>SAIU PARA ENTREGA</Text>}
+              </TouchableOpacity>
+            )}
+
+            {order?.status === 'DISPATCHED' && (
+              <TouchableOpacity
+                style={[styles.btnPrimary, { backgroundColor: '#10B981' }]}
+                onPress={() => updateStatus('DELIVERED')}
+                disabled={updating}
+              >
+                {updating ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.btnText, { color: '#FFF' }]}>MARCAR COMO ENTREGUE</Text>}
+              </TouchableOpacity>
+            )}
+
+            {/* CANCELAMENTO */}
+            {canCancel && (
+              <TouchableOpacity
+                style={styles.btnCancel}
+                onPress={() => setCancelAlertVisible(true)}
+                disabled={updating}
+              >
+                <Feather name="x-circle" size={18} color="#EF4444" />
+                <Text style={styles.btnCancelText}>CANCELAR PEDIDO</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </ScrollView>
+      </View>
+
+      {/* MODAL DE CONFIRMAÇÃO DE CANCELAMENTO */}
+      <CustomAlert 
+        visible={cancelAlertVisible}
+        title="Cancelar Pedido?"
+        message="Esta ação não pode ser desfeita. O cliente será notificado sobre o cancelamento."
+        iconName="alert-triangle"
+        iconColor="#EF4444"
+        confirmText="SIM, CANCELAR"
+        cancelText="VOLTAR"
+        showCancel={true}
+        onConfirm={() => {
+          setCancelAlertVisible(false);
+          updateStatus('CANCELLED');
+        }}
+        onCancel={() => setCancelAlertVisible(false)}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0A0A0A' },
+  container: { flex: 1, paddingHorizontal: 20 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0A0A0A' },
-  container: { padding: 20 },
-  backBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  
+  headerRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginTop: 10, 
+    marginBottom: 20 
+  },
+  backBtn: { flexDirection: 'row', alignItems: 'center' },
   headerTitle: { color: '#FFF', fontSize: 22, fontWeight: '900', marginLeft: 10 },
-  card: { backgroundColor: '#171717', borderRadius: 20, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: '#262626' },
-  sectionTitle: { color: '#666', fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 10 },
-  customerName: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-  customerPhone: { color: '#888', marginTop: 5 },
-  itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  itemQty: { color: '#F59E0B', fontWeight: 'bold', width: 35 },
-  itemName: { color: '#DDD', flex: 1, fontSize: 16 },
-  itemPrice: { color: '#FFF', fontWeight: 'bold' },
-  totalRow: { borderTopWidth: 1, borderTopColor: '#262626', paddingTop: 15, flexDirection: 'row', justifyContent: 'space-between' },
-  totalLabel: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-  totalValue: { color: '#F59E0B', fontSize: 22, fontWeight: '900' },
-  actions: { marginBottom: 50 },
-  btnPrimary: { backgroundColor: '#F59E0B', padding: 18, borderRadius: 15, alignItems: 'center' },
-  btnText: { color: '#000', fontWeight: '900', fontSize: 16 }
+  printBtnSmall: { 
+    backgroundColor: '#171717', 
+    padding: 12, 
+    borderRadius: 15, 
+    borderWidth: 1, 
+    borderColor: '#262626' 
+  },
+
+  card: { 
+    backgroundColor: '#171717', 
+    borderRadius: 20, 
+    padding: 20, 
+    marginBottom: 20, 
+    borderWidth: 1, 
+    borderColor: '#262626' 
+  },
+  sectionTitle: { 
+    color: '#666', 
+    fontSize: 12, 
+    fontWeight: 'bold', 
+    textTransform: 'uppercase', 
+    marginBottom: 15,
+    letterSpacing: 1
+  },
+  customerName: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
+  infoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  customerPhone: { color: '#888', marginLeft: 6, fontSize: 14 },
+
+  itemRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20 },
+  qtyBadge: { 
+    backgroundColor: '#F59E0B15', 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: 6, 
+    marginRight: 12 
+  },
+  itemQty: { color: '#F59E0B', fontWeight: 'bold', fontSize: 14 },
+  itemName: { color: '#DDD', fontSize: 16, fontWeight: '600' },
+  itemObs: { color: '#666', fontSize: 12, marginTop: 4, fontStyle: 'italic' },
+  itemPrice: { color: '#FFF', fontWeight: 'bold', fontSize: 14, marginLeft: 10 },
+
+  totalRow: { 
+    borderTopWidth: 1, 
+    borderTopColor: '#262626', 
+    paddingTop: 20, 
+    marginTop: 10, 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center' 
+  },
+  totalLabel: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  totalValue: { color: '#F59E0B', fontSize: 24, fontWeight: '900' },
+
+  actions: { marginTop: 10, marginBottom: 30 },
+  btnPrimary: { 
+    backgroundColor: '#F59E0B', 
+    padding: 18, 
+    borderRadius: 18, 
+    alignItems: 'center', 
+    marginBottom: 15,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5
+  },
+  btnText: { color: '#000', fontWeight: '900', fontSize: 16, letterSpacing: 1 },
+  
+  btnCancel: { 
+    flexDirection: 'row',
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    padding: 16, 
+    marginTop: 5,
+    borderWidth: 1,
+    borderColor: '#EF444430',
+    borderRadius: 18
+  },
+  btnCancelText: { 
+    color: '#EF4444', 
+    fontWeight: 'bold', 
+    fontSize: 14, 
+    marginLeft: 8 
+  }
 });

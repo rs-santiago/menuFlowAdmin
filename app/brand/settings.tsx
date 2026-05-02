@@ -238,7 +238,7 @@ export default function BrandSettingsScreen() {
         console.error("Dados da Resposta:", error.response.data);
       } else if (error.request) {
         // A requisição foi feita mas não houve resposta (O Network Error puro)
-        console.error("Sem resposta do servidor (Network Error). Request details:", error.request);
+        console.error("Sem resposta do servidor (Network Error). Request details:", error);
       } else {
         // Algo aconteceu na configuração da requisição que acionou um erro
         console.error("Erro de configuração do Axios:", error.message);

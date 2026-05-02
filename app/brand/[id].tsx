@@ -90,6 +90,7 @@ export default function BrandProductsScreen() {
       setProducts(prev => prev.map(p => p.id === product.id ? { ...p, isAvailable: newStatus } : p));
       await api.patch(`/admin/products/${product.id}`, { isAvailable: newStatus });
     } catch (error) {
+      console.error(error);
       showAlert('Erro', 'Falha ao atualizar status.', 'alert-octagon', '#EF4444');
       fetchData();
     }
