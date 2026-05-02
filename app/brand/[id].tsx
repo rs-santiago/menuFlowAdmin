@@ -134,10 +134,9 @@ export default function BrandProductsScreen() {
           <Text style={styles.headerTitle}>Gestão da <Text style={{ color: '#F59E0B' }}>Unidade</Text></Text>
         </View>
 
-        {/* GRID DE GESTÃO RÁPIDA (PEDIDOS + CATEGORIAS) */}
         {/* GRID DE GESTÃO RÁPIDA */}
         <View style={styles.managementGrid}>
-          {/* Card de Pedidos (Mantido) */}
+          {/* Card de Pedidos */}
           <TouchableOpacity
             style={[styles.manageCard, { borderColor: '#F59E0B50' }]}
             onPress={() => router.push({ pathname: "/brand/orders", params: { brandId: id } })}
@@ -155,7 +154,7 @@ export default function BrandProductsScreen() {
             <Text style={styles.manageSubtitle}>Gerenciar fluxo</Text>
           </TouchableOpacity>
 
-          {/* Card de Categorias (Mantido) */}
+          {/* Card de Categorias */}
           <TouchableOpacity
             style={styles.manageCard}
             onPress={() => router.push(`/brand/categories?brandId=${id}`)}
@@ -185,7 +184,7 @@ export default function BrandProductsScreen() {
 
           <TouchableOpacity
             style={styles.manageCard}
-            onPress={() => { /* Futuro: Configurações da Unidade */ }}
+            onPress={() => router.push(`/brand/settings?id=${id}`)}
             activeOpacity={0.8}
           >
             <View style={[styles.manageIconContainer, { backgroundColor: '#262626' }]}>
