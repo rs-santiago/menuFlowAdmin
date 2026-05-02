@@ -28,11 +28,9 @@ export default function OrderDetailsScreen() {
     }
   };
 
-  // Função para Reimprimir o Cupom
   const handleRePrint = async () => {
     if (!order) return;
     try {
-      // "Minha Loja" pode ser substituído por order.brand.name se você trouxer no include do Prisma
       const html = generateOrderHtml(order, order.brand?.name || "Minha Loja", order.brand?.logoUrl || '');
       await Print.printAsync({ html });
     } catch (e) {
@@ -41,17 +39,14 @@ export default function OrderDetailsScreen() {
     }
   };
 
-  // Função para Atualizar Status (Aceitar, Despachar, Entregar, Cancelar)
   const updateStatus = async (newStatus: string) => {
     setUpdating(true);
     try {
       await api.patch(`/admin/orders/${orderId}/status`, { status: newStatus });
 
-      // Se for um status finalizador, volta para a lista
       if (newStatus === 'DELIVERED' || newStatus === 'CANCELLED') {
         router.back();
       } else {
-        // Se for um status intermediário, recarrega os dados para atualizar os botões
         fetchOrderDetails();
       }
     } catch (e) {
@@ -108,6 +103,34 @@ export default function OrderDetailsScreen() {
             </View>
           </View>
 
+          {/* CARD DE ENTREGA E PAGAMENTO */}
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Entrega e Pagamento</Text>
+            
+            <View style={styles.infoRow}>
+              <Feather name={order?.deliveryMethod === 'delivery' ? 'truck' : 'shopping-bag'} size={16} color="#F59E0B" />
+              <Text style={styles.detailText}>
+                {order?.deliveryMethod === 'delivery' ? 'Entrega (Motoboy)' : 'Retirada no Balcão'}
+              </Text>
+            </View>
+
+            {order?.deliveryMethod === 'delivery' && order?.address && (
+              <View style={styles.addressBox}>
+                <Feather name="map-pin" size={14} color="#888" />
+                <Text style={styles.addressText}>{order.address}</Text>
+              </View>
+            )}
+
+            <View style={styles.divider} />
+
+            <View style={styles.infoRow}>
+              <Feather name="dollar-sign" size={16} color="#10B981" />
+              <Text style={styles.detailText}>
+                Pagamento: <Text style={{ fontWeight: 'bold', color: '#FFF' }}>{order?.paymentMethod || 'Não informado'}</Text>
+              </Text>
+            </View>
+          </View>
+
           {/* CARD DE ITENS */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Itens do Pedido</Text>
@@ -118,9 +141,10 @@ export default function OrderDetailsScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.itemName}>{item.name}</Text>
-                  {item.observations && (
-                    <Text style={styles.itemObs}>Obs: {item.observations}</Text>
-                  )}
+                  {/* Corrigido para item.observation conforme salvo no Pinia */}
+                  {item.observation ? (
+                    <Text style={styles.itemObs}>Obs: {item.observation}</Text>
+                  ) : null}
                 </View>
                 <Text style={styles.itemPrice}>
                   R$ {(item.price * item.quantity).toFixed(2)}
@@ -130,7 +154,7 @@ export default function OrderDetailsScreen() {
 
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total do Pedido</Text>
-              <Text style={styles.totalValue}>R$ {order?.total.toFixed(2)}</Text>
+              <Text style={styles.totalValue}>R$ {order?.total?.toFixed(2)}</Text>
             </View>
           </View>
 
@@ -243,6 +267,19 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
   customerPhone: { color: '#888', marginLeft: 6, fontSize: 14 },
 
+  /* Novos Estilos para Entrega e Pagamento */
+  detailText: { color: '#DDD', fontSize: 15, marginLeft: 8 },
+  addressBox: { 
+    backgroundColor: '#26262640', 
+    padding: 12, 
+    borderRadius: 12, 
+    marginTop: 10, 
+    flexDirection: 'row', 
+    alignItems: 'flex-start' 
+  },
+  addressText: { color: '#AAA', fontSize: 13, marginLeft: 8, flex: 1, lineHeight: 18 },
+  divider: { height: 1, backgroundColor: '#262626', marginVertical: 15 },
+
   itemRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20 },
   qtyBadge: { 
     backgroundColor: '#F59E0B15', 
@@ -253,7 +290,7 @@ const styles = StyleSheet.create({
   },
   itemQty: { color: '#F59E0B', fontWeight: 'bold', fontSize: 14 },
   itemName: { color: '#DDD', fontSize: 16, fontWeight: '600' },
-  itemObs: { color: '#666', fontSize: 12, marginTop: 4, fontStyle: 'italic' },
+  itemObs: { color: '#F59E0B', fontSize: 12, marginTop: 4, fontStyle: 'italic', opacity: 0.9 },
   itemPrice: { color: '#FFF', fontWeight: 'bold', fontSize: 14, marginLeft: 10 },
 
   totalRow: { 
