@@ -1,8 +1,10 @@
 import { Feather } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
   Modal,
@@ -41,10 +43,40 @@ export default function BrandProductsScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Estados para contagem de pedidos
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
+  const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
+
+  // Referência para a animação de pulso
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // ==========================================
+  // LÓGICA DE ALARME DE NOVO PEDIDO
+  // ==========================================
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const prevPendingCount = useRef(0); // Guarda a quantidade anterior de pedidos novos
+
+  const playNotificationSound = async () => {
+    try {
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        // ATENÇÃO: Confirme se o caminho para o seu arquivo .wav está correto aqui!
+        require('../../assets/sounds/notification.wav') 
+      );
+      setSound(newSound);
+      await newSound.playAsync();
+    } catch (error) {
+      console.error("Erro ao tocar o som de notificação:", error);
+    }
+  };
+
+  // Limpa o som da memória quando o componente desmontar
+  useEffect(() => {
+    return sound ? () => { sound.unloadAsync(); } : undefined;
+  }, [sound]);
 
   // Estados para os Modais
-  const [modalVisible, setModalVisible] = useState(false); // Bottom Sheet de Opções
+  const [modalVisible, setModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [alertConfig, setAlertConfig] = useState({
     visible: false, title: '', message: '', iconName: 'info' as any, iconColor: '#F59E0B',
@@ -57,7 +89,9 @@ export default function BrandProductsScreen() {
     setAlertConfig({ visible: true, title, message, iconName: icon, iconColor: color, confirmText, showCancel, onConfirm });
   };
 
-  const fetchData = async () => {
+  const fetchData = async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
+
     try {
       const [prodRes, catRes, ordersRes] = await Promise.all([
         api.get(`/admin/brands/${id}/products`),
@@ -66,13 +100,19 @@ export default function BrandProductsScreen() {
       ]);
       setProducts(prodRes.data);
       setCategories(catRes.data);
-      // Filtramos os pedidos que não estão DELIVERED ou CANCELLED
+      
       const activeOrders = ordersRes.data.filter((order: any) =>
         ['PENDING', 'PREPARING', 'DISPATCHED'].includes(order.status)
       );
+      const pendingOrders = ordersRes.data.filter((order: any) => order.status === 'PENDING');
+      
       setActiveOrdersCount(activeOrders.length);
+      setPendingOrdersCount(pendingOrders.length);
     } catch (error) {
-      showAlert('Erro', 'Não foi possível carregar os dados.', 'x-circle', '#EF4444');
+      console.error('error ==> ', error);
+      if (!isSilent) {
+        showAlert('Erro', 'Não foi possível carregar os dados.', 'x-circle', '#EF4444');
+      }
     } finally {
       setLoading(false);
     }
@@ -80,9 +120,35 @@ export default function BrandProductsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      // 1. Busca inicial com loader
       fetchData();
+
+      // 2. Polling silencioso a cada 15 segundos
+      const interval = setInterval(() => {
+        fetchData(true);
+      }, 15000);
+
+      return () => clearInterval(interval);
     }, [id])
   );
+
+  // Efeito da animação do Badge
+  useEffect(() => {
+    if (pendingOrdersCount > 0) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 0.2, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+    if (pendingOrdersCount > prevPendingCount.current) {
+      playNotificationSound();
+    }
+    prevPendingCount.current = pendingOrdersCount;
+  }, [pendingOrdersCount]);
 
   const toggleAvailability = async (product: Product) => {
     const newStatus = !product.isAvailable;
@@ -136,22 +202,35 @@ export default function BrandProductsScreen() {
 
         {/* GRID DE GESTÃO RÁPIDA */}
         <View style={styles.managementGrid}>
-          {/* Card de Pedidos */}
+          {/* CARD DE PEDIDOS */}
           <TouchableOpacity
-            style={[styles.manageCard, { borderColor: '#F59E0B50' }]}
+            style={[
+              styles.manageCard, 
+              pendingOrdersCount > 0 ? { borderColor: '#F59E0B' } : { borderColor: '#262626' }
+            ]}
             onPress={() => router.push({ pathname: "/brand/orders", params: { brandId: id } })}
             activeOpacity={0.8}
           >
             <View style={styles.manageIconContainer}>
               <Feather name="shopping-bag" size={20} color="#F59E0B" />
-              {activeOrdersCount > 0 && (
-                <View style={styles.orderBadge}>
+              
+              {pendingOrdersCount > 0 ? (
+                <Animated.View style={[styles.orderBadgeAlert, { opacity: pulseAnim }]}>
+                  <Text style={styles.orderBadgeText} numberOfLines={1}>
+                    {pendingOrdersCount} {pendingOrdersCount === 1 ? 'NOVO' : 'NOVOS'}
+                  </Text>
+                </Animated.View>
+              ) : activeOrdersCount > 0 ? (
+                <View style={styles.orderBadgeNormal}>
                   <Text style={styles.orderBadgeText}>{activeOrdersCount}</Text>
                 </View>
-              )}
+              ) : null}
+
             </View>
             <Text style={styles.manageTitle}>Pedidos</Text>
-            <Text style={styles.manageSubtitle}>Gerenciar fluxo</Text>
+            <Text style={[styles.manageSubtitle, pendingOrdersCount > 0 && { color: '#F59E0B', fontWeight: 'bold' }]}>
+              {pendingOrdersCount > 0 ? 'Aguardando aceite!' : 'Gerenciar fluxo'}
+            </Text>
           </TouchableOpacity>
 
           {/* Card de Categorias */}
@@ -312,8 +391,25 @@ const styles = StyleSheet.create({
   manageIconContainer: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#F59E0B15', justifyContent: 'center', alignItems: 'center', marginBottom: 12, position: 'relative' },
   manageTitle: { color: '#FFF', fontSize: 15, fontWeight: 'bold' },
   manageSubtitle: { color: '#666', fontSize: 11, marginTop: 2 },
-  orderBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#EF4444', borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#171717' },
-  orderBadgeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+  
+  // Estilos Novos dos Badges
+  orderBadgeAlert: { 
+    position: 'absolute', 
+    top: -8, 
+    right: -45, 
+    backgroundColor: '#EF4444', 
+    borderRadius: 12, 
+    paddingHorizontal: 10, 
+    minWidth: 75, 
+    height: 24, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    borderWidth: 2, 
+    borderColor: '#171717',
+    zIndex: 10, 
+  },
+  orderBadgeNormal: { position: 'absolute', top: -5, right: -5, backgroundColor: '#262626', borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#171717' },
+  orderBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '900' },
 
   // Filtros
   filterContainer: { marginBottom: 20 },
