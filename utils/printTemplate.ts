@@ -17,6 +17,10 @@ export const generateOrderHtml = (order: any, brandName: string, logoUrl?: strin
     </div>
   `).join('');
 
+  // Lógica para identificar se é mesa
+  const isMesa = order.mesa || order.deliveryMethod === 'MESA';
+  const numeroMesa = order.mesa || (order.address ? order.address.replace('Mesa ', '') : '');
+
   return `
     <html>
       <body style="width: 80mm; padding: 10px; font-family: 'Courier New', Courier, monospace; color: #000; line-height: 1.4;">
@@ -32,10 +36,20 @@ export const generateOrderHtml = (order: any, brandName: string, logoUrl?: strin
           <div style="font-size: 12px;">Tel: ${order.customerPhone}</div>
         </div>
 
-        <div style="margin-bottom: 10px; padding: 5px; background-color: #f9f9f9; border: 1px solid #ccc;">
-          <div><strong>TIPO:</strong> ${order.deliveryMethod === 'delivery' ? 'ENTREGA (MOTOBOY)' : 'RETIRADA NO BALCÃO'}</div>
-          ${order.deliveryMethod === 'delivery' && order.address ? `<div><strong>END:</strong> ${order.address}</div>` : ''}
-          <div style="margin-top: 4px;"><strong>PAGAMENTO:</strong> ${order.paymentMethod || 'A combinar'}</div>
+        <!-- DESTAQUE DO MÉTODO DE ENTREGA OU MESA -->
+        <div style="margin-bottom: 10px; padding: 8px; border: ${isMesa ? '2px solid #000' : '1px solid #000'}; text-align: ${isMesa ? 'center' : 'left'};">
+          ${isMesa ? `
+            <div style="font-size: 22px; font-weight: 900; letter-spacing: 2px;">
+              MESA ${numeroMesa}
+            </div>
+          ` : `
+            <div><strong>TIPO:</strong> ${order.deliveryMethod === 'delivery' ? 'ENTREGA (MOTOBOY)' : 'RETIRADA NO BALCÃO'}</div>
+            ${order.deliveryMethod === 'delivery' && order.address ? `<div style="margin-top: 4px;"><strong>END:</strong> ${order.address}</div>` : ''}
+          `}
+          
+          <div style="margin-top: ${isMesa ? '8px' : '4px'}; border-top: ${isMesa ? '1px dashed #000' : 'none'}; padding-top: ${isMesa ? '5px' : '0'}; font-size: 14px;">
+            <strong>PAGAMENTO:</strong> ${order.paymentMethod || 'A combinar'}
+          </div>
         </div>
 
         <div style="border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px;">
@@ -47,7 +61,7 @@ export const generateOrderHtml = (order: any, brandName: string, logoUrl?: strin
           <div style="font-size: 18px; font-weight: bold;">TOTAL: R$ ${Number(order.total).toFixed(2)}</div>
         </div>
 
-        <div style="text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px solid #ccc; padding-top: 10px;">
+        <div style="text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px solid #000; padding-top: 10px;">
           Impresso via MenuFlow SaaS
         </div>
       </body>

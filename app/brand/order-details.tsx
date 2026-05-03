@@ -107,18 +107,28 @@ export default function OrderDetailsScreen() {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Entrega e Pagamento</Text>
             
-            <View style={styles.infoRow}>
-              <Feather name={order?.deliveryMethod === 'delivery' ? 'truck' : 'shopping-bag'} size={16} color="#F59E0B" />
-              <Text style={styles.detailText}>
-                {order?.deliveryMethod === 'delivery' ? 'Entrega (Motoboy)' : 'Retirada no Balcão'}
-              </Text>
-            </View>
-
-            {order?.deliveryMethod === 'delivery' && order?.address && (
-              <View style={styles.addressBox}>
-                <Feather name="map-pin" size={14} color="#888" />
-                <Text style={styles.addressText}>{order.address}</Text>
+            {/* LÓGICA NOVA: SE TIVER MESA, EXIBE EM DESTAQUE E ESCONDE O ENDEREÇO */}
+            {order?.mesa || order?.deliveryMethod === 'MESA' ? (
+              <View style={styles.mesaBadge}>
+                <Feather name="coffee" size={20} color="#F59E0B" />
+                <Text style={styles.mesaText}>ATENDIMENTO: MESA {order.mesa || order.address.replace('Mesa ', '')}</Text>
               </View>
+            ) : (
+              <>
+                <View style={styles.infoRow}>
+                  <Feather name={order?.deliveryMethod === 'delivery' ? 'truck' : 'shopping-bag'} size={16} color="#F59E0B" />
+                  <Text style={styles.detailText}>
+                    {order?.deliveryMethod === 'delivery' ? 'Entrega (Motoboy)' : 'Retirada no Balcão'}
+                  </Text>
+                </View>
+
+                {order?.deliveryMethod === 'delivery' && order?.address && (
+                  <View style={styles.addressBox}>
+                    <Feather name="map-pin" size={14} color="#888" />
+                    <Text style={styles.addressText}>{order.address}</Text>
+                  </View>
+                )}
+              </>
             )}
 
             <View style={styles.divider} />
@@ -141,7 +151,6 @@ export default function OrderDetailsScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.itemName}>{item.name}</Text>
-                  {/* Corrigido para item.observation conforme salvo no Pinia */}
                   {item.observation ? (
                     <Text style={styles.itemObs}>Obs: {item.observation}</Text>
                   ) : null}
@@ -176,7 +185,8 @@ export default function OrderDetailsScreen() {
                 onPress={() => updateStatus('DISPATCHED')}
                 disabled={updating}
               >
-                {updating ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.btnText, { color: '#FFF' }]}>SAIU PARA ENTREGA</Text>}
+                {/* Texto dinâmico: Se for mesa, "Pronto para Servir" faz mais sentido que "Saiu para Entrega" */}
+                {updating ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.btnText, { color: '#FFF' }]}>{order?.mesa ? 'PRONTO PARA SERVIR' : 'SAIU PARA ENTREGA'}</Text>}
               </TouchableOpacity>
             )}
 
@@ -186,7 +196,7 @@ export default function OrderDetailsScreen() {
                 onPress={() => updateStatus('DELIVERED')}
                 disabled={updating}
               >
-                {updating ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.btnText, { color: '#FFF' }]}>MARCAR COMO ENTREGUE</Text>}
+                {updating ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.btnText, { color: '#FFF' }]}>{order?.mesa ? 'CONCLUIR ATENDIMENTO' : 'MARCAR COMO ENTREGUE'}</Text>}
               </TouchableOpacity>
             )}
 
@@ -267,7 +277,27 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
   customerPhone: { color: '#888', marginLeft: 6, fontSize: 14 },
 
-  /* Novos Estilos para Entrega e Pagamento */
+  /* Estilos para Mesa (Novo) */
+  mesaBadge: {
+    backgroundColor: '#F59E0B15',
+    borderWidth: 1,
+    borderColor: '#F59E0B40',
+    padding: 12,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5
+  },
+  mesaText: {
+    color: '#F59E0B',
+    fontSize: 15,
+    fontWeight: '900',
+    marginLeft: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase'
+  },
+
+  /* Estilos para Entrega e Pagamento */
   detailText: { color: '#DDD', fontSize: 15, marginLeft: 8 },
   addressBox: { 
     backgroundColor: '#26262640', 
@@ -318,7 +348,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5
   },
-  btnText: { color: '#000', fontWeight: '900', fontSize: 16, letterSpacing: 1 },
+  btnText: { color: '#000', fontWeight: '900', fontSize: 15, letterSpacing: 1 },
   
   btnCancel: { 
     flexDirection: 'row',
