@@ -1,6 +1,6 @@
 // services/api.ts
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import { getStorageItem } from '../utils/storage';
 
 const api = axios.create({
   // Se estiver no emulador Android: http://10.0.2.2:3000/api
@@ -11,7 +11,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync('menuflow_token');
+  const token = await getStorageItem('menuflow_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

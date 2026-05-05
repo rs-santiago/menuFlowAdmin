@@ -3,19 +3,38 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-// Configura como a notificação aparece com o app aberto
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// 1. BLINDAGEM: Só configura o handler se NÃO for web
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
 
 export async function registerForPushNotificationsAsync() {
+  if (Platform.OS === 'web') {
+    console.log('Notificações Push ignoradas na Web.');
+    return null; 
+  }
+
+  const Notifications = await import('expo-notifications');
+
   let token;
+
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
@@ -40,12 +59,10 @@ export async function registerForPushNotificationsAsync() {
       return null;
     }
     
-    // Tenta pegar o ID, mas sem forçar
     const projectId =
       Constants?.expoConfig?.extra?.eas?.projectId ??
       Constants?.easConfig?.projectId;
 
-    // Se não tiver conta/projeto configurado, a gente aborta a missão em paz
     if (!projectId) {
       console.log('⚠️ Sem projectId configurado. Pulando geração de Token Push para evitar crash.');
       return null;

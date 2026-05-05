@@ -1,20 +1,22 @@
 import { registerForPushNotificationsAsync } from '@/services/notifications';
+import { getStorageItem } from '@/utils/storage';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
+  useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomAlert from '../../components/CustomAlert';
@@ -32,20 +34,20 @@ interface Brand {
   isActive: boolean;
   logoUrl?: string | null;
   _count: { products: number };
+  empty?: boolean;
 }
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
 
-  // Estados de Dados
+  const isLargeScreen = width > 768;
+  const isWeb = Platform.OS === 'web';
+
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
-  
-  // Estados de Usuário
   const [userName, setUserName] = useState('Lojista');
   const [userRole, setUserRole] = useState('ADMIN');
-  
-  // Estados de UI
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [greeting, setGreeting] = useState('');
@@ -55,9 +57,13 @@ export default function DashboardScreen() {
     visible: false, title: '', message: '', iconName: 'info' as any, iconColor: '#F59E0B'
   });
 
+  const showAlert = (title: string, message: string, iconName: any = 'info', iconColor = '#F59E0B') => {
+    setAlertConfig({ visible: true, title, message, iconName, iconColor });
+  };
+
   const loadUserData = async () => {
     try {
-      const userStr = await SecureStore.getItemAsync('menuflow_user');
+      const userStr = await getStorageItem('menuflow_user');
       if (userStr) {
         const user = JSON.parse(userStr);
         setUserName(user.name?.split(' ')[0] || 'Lojista');
@@ -81,6 +87,17 @@ export default function DashboardScreen() {
     }
   };
 
+  const formatData = (dataList: any[], numColumns: number) => {
+    const totalRows = Math.floor(dataList.length / numColumns);
+    let totalLastRow = dataList.length - (totalRows * numColumns);
+    const formattedList = [...dataList];
+    while (totalLastRow !== 0 && totalLastRow !== numColumns) {
+      formattedList.push({ id: `blank-${totalLastRow}`, empty: true });
+      totalLastRow++;
+    }
+    return formattedList;
+  };
+
   const toggleBrandStatus = async (brandId: string, currentStatus: boolean) => {
     const newStatus = !currentStatus;
     try {
@@ -88,13 +105,7 @@ export default function DashboardScreen() {
       await api.patch(`/admin/brands/${brandId}/status`, { isActive: newStatus });
     } catch (error) {
       fetchData();
-      setAlertConfig({
-        visible: true,
-        title: 'Erro',
-        message: 'Falha ao atualizar status da loja.',
-        iconName: 'alert-octagon',
-        iconColor: '#EF4444'
-      });
+      showAlert('Erro', 'Falha ao atualizar status.', 'alert-octagon', '#EF4444');
     }
   };
 
@@ -103,12 +114,9 @@ export default function DashboardScreen() {
       const token = await registerForPushNotificationsAsync();
       if (token) {
         try {
-          const userStr = await SecureStore.getItemAsync('menuflow_user');
+          const userStr = await getStorageItem('menuflow_user');
           const user = userStr ? JSON.parse(userStr) : null;
-          await api.patch('/admin/user/push-token', { 
-            token: token,
-            userId: user?.id 
-          });
+          await api.patch('/admin/user/push-token', { token, userId: user?.id });
         } catch (error) {
           console.error("Erro ao salvar token push:", error);
         }
@@ -129,12 +137,14 @@ export default function DashboardScreen() {
   const isSuperAdmin = userRole === 'SUPER_ADMIN';
 
   const renderMetricCard = (label: string, value: number | string, icon: keyof typeof Feather.glyphMap) => (
-    <View style={styles.metricCard}>
+    <View style={[styles.metricCard, isLargeScreen && styles.metricCardDesktop]}>
       <View style={styles.metricIconContainer}>
         <Feather name={icon} size={20} color="#F59E0B" />
       </View>
-      <Text style={styles.metricValue}>{value}</Text>
-      <Text style={styles.metricLabel}>{label}</Text>
+      <View>
+        <Text style={styles.metricValue}>{value}</Text>
+        <Text style={styles.metricLabel}>{label}</Text>
+      </View>
     </View>
   );
 
@@ -150,158 +160,170 @@ export default function DashboardScreen() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
       <Stack.Screen options={{ headerShown: false }} />
-      
-      <View style={styles.container}>
-        {/* HEADER */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>{greeting}, {userName}</Text>
-            <Text style={styles.subtitle}>Gerencie seu império</Text>
+
+      <View style={styles.mainWrapper}>
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.greeting}>{greeting}, {userName}</Text>
+              <Text style={styles.subtitle}>Gerencie seu império de onde estiver</Text>
+            </View>
+            <View style={[styles.adminBadge, !isSuperAdmin && styles.adminBadgeRegular]}>
+              <Text style={[styles.adminBadgeText, !isSuperAdmin && styles.adminBadgeTextRegular]}>
+                {isSuperAdmin ? 'SUPER ADMIN' : 'ADMINISTRADOR'}
+              </Text>
+            </View>
           </View>
-          <View style={[styles.adminBadge, !isSuperAdmin && styles.adminBadgeRegular]}>
-            <Text style={[styles.adminBadgeText, !isSuperAdmin && styles.adminBadgeTextRegular]}>
-              {isSuperAdmin ? 'SUPER ADMIN' : 'ADMINISTRADOR'}
-            </Text>
-          </View>
-        </View>
 
-        <FlatList
-          data={brands}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchData} tintColor="#F59E0B" />}
-          ListHeaderComponent={
-            <>
-              {/* MÉTRICAS */}
-              <View style={styles.metricsGrid}>
-                {renderMetricCard('Lojas', metrics?.totalBrands || 0, 'briefcase')}
-                {renderMetricCard('Produtos', metrics?.totalProducts || 0, 'package')}
-              </View>
-
-              {/* AÇÕES RÁPIDAS (Lojista) */}
-              <View style={styles.quickActionsContainer}>
-                <Text style={styles.sectionTitle}>Ações Rápidas</Text>
-                <View style={styles.actionGrid}>
-                  <TouchableOpacity 
-                    style={styles.actionBtn}
-                    onPress={() => {
-                      if (brands.length === 1) router.push(`/product/form?brandId=${brands[0].id}`);
-                      else if (brands.length > 1) setBrandSelectorVisible(true);
-                      else setAlertConfig({ visible: true, title: 'Ops', message: 'Crie uma loja primeiro.', iconName: 'alert-circle', iconColor: '#EF4444' });
-                    }}
-                  >
-                    <Feather name="plus-circle" size={18} color="#F59E0B" />
-                    <Text style={styles.actionBtnText}>Novo Produto</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.actionBtn} onPress={fetchData}>
-                    <Feather name="refresh-cw" size={18} color="#F59E0B" />
-                    <Text style={styles.actionBtnText}>Sincronizar</Text>
-                  </TouchableOpacity>
+          <FlatList
+            data={isLargeScreen ? formatData(brands, 2) : brands}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            numColumns={isLargeScreen ? 2 : 1}
+            key={isLargeScreen ? 'h' : 'v'}
+            columnWrapperStyle={isLargeScreen ? { gap: 16 } : null}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchData} tintColor="#F59E0B" />}
+            ListHeaderComponent={
+              <>
+                <View style={[styles.metricsGrid, isLargeScreen && styles.metricsGridDesktop]}>
+                  {renderMetricCard('Lojas', metrics?.totalBrands || 0, 'briefcase')}
+                  {renderMetricCard('Produtos', metrics?.totalProducts || 0, 'package')}
                 </View>
-              </View>
 
-              {/* PAINEL SUPER ADMIN */}
-              {isSuperAdmin && (
                 <View style={styles.quickActionsContainer}>
-                  <Text style={[styles.sectionTitle, { color: '#F59E0B' }]}>Painel Master</Text>
-                  <View style={styles.actionGrid}>
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/admin/brands/new')}>
-                      <Feather name="plus-square" size={18} color="#10B981" />
-                      <Text style={styles.actionBtnText}>Nova Loja</Text>
+                  <Text style={styles.sectionTitle}>Ações Rápidas</Text>
+                  <View style={[styles.actionGrid, isLargeScreen && styles.actionGridDesktop]}>
+                    <TouchableOpacity
+                      style={styles.actionBtn}
+                      onPress={() => {
+                        if (brands.length === 1) router.push(`/product/form?brandId=${brands[0].id}`);
+                        else if (brands.length > 1) setBrandSelectorVisible(true);
+                        else showAlert('Ops', 'Crie uma loja primeiro.', 'alert-circle', '#EF4444');
+                      }}
+                    >
+                      <Feather name="plus-circle" size={18} color="#F59E0B" />
+                      <Text style={styles.actionBtnText} numberOfLines={1}>Novo Produto</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/admin/users')}>
-                      <Feather name="users" size={18} color="#3B82F6" />
-                      <Text style={styles.actionBtnText}>Usuários</Text>
+
+                    <TouchableOpacity style={styles.actionBtn} onPress={fetchData}>
+                      <Feather name="refresh-cw" size={18} color="#F59E0B" />
+                      <Text style={styles.actionBtnText} numberOfLines={1}>Sincronizar</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
-              )}
-
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Suas Unidades</Text>
-                <Text style={styles.sectionSubtitle}>{brands.length} {brands.length === 1 ? 'LOJA' : 'LOJAS'}</Text>
-              </View>
-            </>
-          }
-          renderItem={({ item }) => (
-            <TouchableOpacity 
-              style={[styles.brandCard, !item.isActive && styles.brandCardDisabled]}
-              activeOpacity={0.8}
-              onPress={() => router.push(`/brand/${item.id}`)}
-            >
-              <View style={styles.brandCardContent}>
-                <View style={styles.brandAvatar}>
-                  {item.logoUrl ? (
-                    <Image source={{ uri: item.logoUrl }} style={styles.brandImage} />
-                  ) : (
-                    <Text style={styles.brandAvatarText}>{item.name[0].toUpperCase()}</Text>
-                  )}
-                </View>
-                <View style={styles.brandInfo}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={[styles.brandName, !item.isActive && { color: '#666' }]}>{item.name}</Text>
-                    {!item.isActive && (
-                      <View style={styles.offBadge}><Text style={styles.offBadgeText}>OFFLINE</Text></View>
-                    )}
-                  </View>
-                  <Text style={styles.brandSlug}>/{item.slug}</Text>
-                </View>
-
                 {isSuperAdmin && (
-                  <TouchableOpacity 
-                    style={[styles.statusToggleBtn, item.isActive ? styles.btnActive : styles.btnInactive]}
-                    onPress={(e) => { e.stopPropagation(); toggleBrandStatus(item.id, item.isActive); }}
-                  >
-                    <Feather name="power" size={16} color={item.isActive ? '#10B981' : '#EF4444'} />
-                  </TouchableOpacity>
+                  <View style={styles.quickActionsContainer}>
+                      <Text style={styles.sectionTitle}>Super Admin config</Text>
+                      <View style={[styles.actionGrid, isLargeScreen && styles.actionGridDesktop]}>
+                        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/admin/brands/new')}>
+                          <Feather name="plus-square" size={18} color="#10B981" />
+                          <Text style={styles.actionBtnText} numberOfLines={1}>Nova Loja</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/admin/users')}>
+                          <Feather name="users" size={18} color="#3B82F6" />
+                          <Text style={styles.actionBtnText} numberOfLines={1}>Usuários</Text>
+                        </TouchableOpacity>
+                      </View>
+                  </View>
                 )}
 
-                <TouchableOpacity 
-                  style={styles.settingsBtn}
-                  onPress={(e) => { e.stopPropagation(); router.push(`/brand/settings?id=${item.id}`); }}
-                >
-                  <Feather name="settings" size={20} color="#666" />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.brandCardFooter}>
-                <View style={styles.badge}>
-                  <Feather name="box" size={12} color="#F59E0B" style={{marginRight: 4}} />
-                  <Text style={styles.badgeText}>{item._count?.products || 0} Itens</Text>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Suas Unidades</Text>
+                  <Text style={styles.sectionSubtitle}>{brands.filter(b => !b.empty).length} LOJAS</Text>
                 </View>
-                <Feather name="chevron-right" size={20} color="#444" />
-              </View>
-            </TouchableOpacity>
-          )}
-          contentContainerStyle={styles.listContent}
-        />
+              </>
+            }
+            renderItem={({ item }) => {
+              if (item.empty) {
+                return <View style={{ flex: 1, backgroundColor: 'transparent', marginBottom: 16 }} />;
+              }
 
-        {/* MODAL SELETOR DE UNIDADE */}
-        <Modal animationType="slide" transparent={true} visible={brandSelectorVisible}>
-          <Pressable style={styles.modalOverlay} onPress={() => setBrandSelectorVisible(false)}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHandle} />
-              <Text style={styles.modalTitle}>Selecionar <Text style={{color: '#F59E0B'}}>Unidade</Text></Text>
-              {brands.map((brand) => (
-                <TouchableOpacity key={brand.id} style={styles.brandOption} onPress={() => { setBrandSelectorVisible(false); router.push(`/product/form?brandId=${brand.id}`); }}>
+              return (
+                <TouchableOpacity
+                  style={[styles.brandCard, !item.isActive && styles.brandCardDisabled, isLargeScreen && { flex: 1 }]}
+                  activeOpacity={0.8}
+                  onPress={() => router.push(`/brand/${item.id}`)}
+                >
+                  <View style={styles.brandCardContent}>
+                    <View style={styles.brandAvatar}>
+                      {item.logoUrl ? (
+                        <Image source={{ uri: item.logoUrl }} style={styles.brandImage} />
+                      ) : (
+                        <Text style={styles.brandAvatarText}>{item.name[0].toUpperCase()}</Text>
+                      )}
+                    </View>
+                    <View style={styles.brandInfo}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={[styles.brandName, !item.isActive && { color: '#666' }]}>{item.name}</Text>
+                        {!item.isActive && (
+                          <View style={styles.offBadge}><Text style={styles.offBadgeText}>OFFLINE</Text></View>
+                        )}
+                      </View>
+                      <Text style={styles.brandSlug}>/{item.slug}</Text>
+                    </View>
+
+                    {isSuperAdmin && (
+                      <TouchableOpacity
+                        style={[styles.statusToggleBtn, item.isActive ? styles.btnActive : styles.btnInactive]}
+                        onPress={(e) => { e.stopPropagation(); toggleBrandStatus(item.id, item.isActive); }}
+                      >
+                        <Feather name="power" size={16} color={item.isActive ? '#10B981' : '#EF4444'} />
+                      </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity
+                      style={styles.settingsBtn}
+                      onPress={(e) => { e.stopPropagation(); router.push(`/brand/settings?id=${item.id}`); }}
+                    >
+                      <Feather name="settings" size={20} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.brandCardFooter}>
+                    <View style={styles.badge}>
+                      <Feather name="box" size={12} color="#F59E0B" style={{ marginRight: 4 }} />
+                      <Text style={styles.badgeText}>{item._count?.products || 0} Itens</Text>
+                    </View>
+                    <Feather name="chevron-right" size={20} color="#444" />
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+            contentContainerStyle={styles.listContent}
+          />
+        </View>
+      </View>
+
+      <Modal animationType={isWeb ? 'fade' : 'slide'} transparent={true} visible={brandSelectorVisible}>
+        <Pressable style={styles.modalOverlay} onPress={() => setBrandSelectorVisible(false)}>
+          <View style={[styles.modalContent, isLargeScreen && styles.modalContentDesktop]}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Selecionar <Text style={{ color: '#F59E0B' }}>Unidade</Text></Text>
+            <View style={isLargeScreen && { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {brands.filter(b => !b.empty).map((brand) => (
+                <TouchableOpacity
+                  key={brand.id}
+                  style={[styles.brandOption, isLargeScreen && { width: '48%' }]}
+                  onPress={() => { setBrandSelectorVisible(false); router.push(`/product/form?brandId=${brand.id}`); }}
+                >
                   <Text style={styles.brandOptionName}>{brand.name}</Text>
                   <Feather name="chevron-right" size={18} color="#444" />
                 </TouchableOpacity>
               ))}
             </View>
-          </Pressable>
-        </Modal>
-      </View>
-      
+          </View>
+        </Pressable>
+      </Modal>
+
       <CustomAlert {...alertConfig} onConfirm={() => setAlertConfig(p => ({ ...p, visible: false }))} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  mainWrapper: { flex: 1, backgroundColor: '#0A0A0A', alignItems: 'center' },
+  container: { flex: 1, width: '100%', maxWidth: 1100, paddingHorizontal: 20 },
   safeArea: { flex: 1, backgroundColor: '#0A0A0A' },
-  container: { flex: 1, paddingHorizontal: 20 },
   centered: { flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 25 },
   greeting: { fontSize: 24, fontWeight: '900', color: '#FFF' },
@@ -311,15 +333,42 @@ const styles = StyleSheet.create({
   adminBadgeRegular: { backgroundColor: '#10B98120', borderColor: '#10B98150' },
   adminBadgeTextRegular: { color: '#10B981' },
   metricsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 },
+  metricsGridDesktop: { gap: 16 },
   metricCard: { backgroundColor: '#171717', width: '48%', padding: 20, borderRadius: 24, borderWidth: 1, borderColor: '#262626' },
+  metricCardDesktop: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 15 },
   metricIconContainer: { backgroundColor: '#F59E0B20', width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   metricValue: { fontSize: 32, fontWeight: '900', color: '#FFF' },
   metricLabel: { color: '#888', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   quickActionsContainer: { marginBottom: 25 },
   sectionTitle: { color: '#FFF', fontSize: 18, fontWeight: '900', marginBottom: 15 },
-  actionGrid: { flexDirection: 'row', justifyContent: 'space-between' },
-  actionBtn: { backgroundColor: '#171717', width: '48%', padding: 16, borderRadius: 20, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#262626' },
-  actionBtnText: { color: '#FFF', marginLeft: 10, fontWeight: 'bold', fontSize: 13 },
+
+  // CORREÇÃO AÇÕES RÁPIDAS
+  actionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap', // Permite quebrar a linha no celular
+    justifyContent: 'space-between',
+    gap: 12
+  },
+  actionGridDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap', // Garante linha única no desktop
+  },
+  actionBtn: {
+    backgroundColor: '#171717',
+    width: '48%', // Dois por linha no celular
+    padding: 16,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#262626'
+  },
+  actionBtnDesktop: {
+    flex: 1, // Divide o espaço igualmente no desktop
+    minWidth: 150
+  },
+  actionBtnText: { color: '#FFF', marginLeft: 10, fontWeight: 'bold', fontSize: 13, flex: 1 },
+
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 15 },
   sectionSubtitle: { color: '#888', fontSize: 12, fontWeight: 'bold', marginBottom: 3 },
   listContent: { paddingBottom: 40 },
@@ -343,6 +392,7 @@ const styles = StyleSheet.create({
   badgeText: { color: '#F59E0B', fontSize: 12, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#171717', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40 },
+  modalContentDesktop: { maxWidth: 600, alignSelf: 'center', borderRadius: 30, marginBottom: 'auto', marginTop: 'auto' },
   modalHandle: { width: 40, height: 4, backgroundColor: '#333', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
   modalTitle: { color: '#FFF', fontSize: 20, fontWeight: '900', marginBottom: 20, textAlign: 'center' },
   brandOption: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#262626', padding: 15, borderRadius: 18, marginBottom: 12 },

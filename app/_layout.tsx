@@ -1,29 +1,26 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { deleteItemAsync, getItemAsync } from 'expo-secure-store';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import api from '../services/api'; // Ajuste o caminho se necessário
+import api from '../services/api';
+import { getStorageItem, removeStorageItem } from '../utils/storage';
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
   const segments = useSegments();
   const router = useRouter();
 
-  // Função para validar o token e os dados
   const checkAuth = async () => {
-    const token = await getItemAsync('menuflow_token');
-    const userData = await getItemAsync('menuflow_user');
+    // Usamos as nossas novas funções compatíveis com a Web
+    const token = await getStorageItem('menuflow_token');
+    const userData = await getStorageItem('menuflow_user');
     const inAuthGroup = segments[0] === 'login';
 
     if (!token && !inAuthGroup) {
-      // Sem token e fora do login? Manda pro login
       router.replace('/login');
     } else if (token && userData) {
-      // Se tem token, garante que o Axios do app inteiro vai usá-lo
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
       if (inAuthGroup) {
-        // Se já está logado e tentou abrir a tela de Login, faz o roteamento inteligente
         const user = JSON.parse(userData);
         
         if (user.role === 'SUPER_ADMIN' || user.brandIds?.length > 1) {
@@ -31,9 +28,8 @@ export default function RootLayout() {
         } else if (user.brandIds?.length === 1) {
           router.replace(`/brand/${user.brandIds[0]}`);
         } else {
-          // Token existe mas não tem lojas cadastradas (segurança)
-          await deleteItemAsync('menuflow_token');
-          await deleteItemAsync('menuflow_user');
+          await removeStorageItem('menuflow_token');
+          await removeStorageItem('menuflow_user');
           router.replace('/login');
         }
       }
@@ -44,7 +40,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     checkAuth();
-  }, [segments]); // Executa sempre que a rota mudar
+  }, [segments]);
 
   if (!isReady) {
     return (

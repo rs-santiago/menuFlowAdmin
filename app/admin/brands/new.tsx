@@ -2,15 +2,16 @@ import { Feather } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomAlert from '../../../components/CustomAlert';
@@ -18,6 +19,8 @@ import api from '../../../services/api';
 
 export default function NewBrandScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width > 768;
 
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -27,10 +30,8 @@ export default function NewBrandScreen() {
     visible: false, title: '', message: '', iconName: 'info' as any, iconColor: '#F59E0B'
   });
 
-  // Função para gerar o slug automaticamente enquanto digita o nome
   const handleNameChange = (text: string) => {
     setName(text);
-    // Remove acentos, caracteres especiais, substitui espaços por hífens e deixa minúsculo
     const generatedSlug = text
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
@@ -53,12 +54,11 @@ export default function NewBrandScreen() {
     setLoading(true);
 
     try {
-      // Como seu Prisma exige muitos campos, enviamos dados "Template" 
-      // para a loja já nascer com um visual base que não quebre o app de clientes.
+      // Dados Template para evitar quebras no app do cliente
       const payload = {
         name,
         slug,
-        surname: name.split(' ')[0], // Pega a primeira palavra
+        surname: name.split(' ')[0],
         tagline: 'O melhor sabor da região',
         heroTitle: `Bem-vindo ao ${name}`,
         heroHighlight: 'Sabor',
@@ -87,14 +87,12 @@ export default function NewBrandScreen() {
         iconName: 'check-circle', iconColor: '#10B981'
       });
 
-      // Aguarda 1.5s e volta pro Dashboard para ver a loja na lista
       setTimeout(() => {
         setAlertConfig(prev => ({...prev, visible: false}));
         router.back();
       }, 1500);
 
     } catch (error: any) {
-      console.error(error.response?.data);
       const msg = error.response?.data?.message || 'Já existe uma loja com este Link (Slug).';
       setAlertConfig({
         visible: true, title: 'Erro', message: msg,
@@ -119,56 +117,61 @@ export default function NewBrandScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={styles.container}>
-          
-          <View style={styles.iconContainer}>
-            <View style={styles.iconCircle}>
-              <Feather name="briefcase" size={40} color="#F59E0B" />
+        <View style={styles.mainWrapper}>
+          <ScrollView 
+            contentContainerStyle={styles.container}
+            showsVerticalScrollIndicator={false}
+          >
+            
+            <View style={styles.iconContainer}>
+              <View style={styles.iconCircle}>
+                <Feather name="briefcase" size={40} color="#F59E0B" />
+              </View>
+              <Text style={styles.headerTitle}>Nova Unidade</Text>
+              <Text style={styles.headerSubtitle}>Crie um novo espaço de vendas</Text>
             </View>
-            <Text style={styles.headerTitle}>Nova Unidade</Text>
-            <Text style={styles.headerSubtitle}>Crie um novo espaço de vendas</Text>
-          </View>
 
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>NOME DA LOJA</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ex: Pizzaria MenuFlow"
-              placeholderTextColor="#444"
-              value={name}
-              onChangeText={handleNameChange}
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>LINK DA LOJA (SLUG)</Text>
-            <View style={styles.slugContainer}>
-              <Text style={styles.slugPrefix}>menuflow.com/</Text>
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>NOME DA LOJA</Text>
               <TextInput
-                style={styles.slugInput}
-                placeholder="pizzaria-menuflow"
+                style={styles.input}
+                placeholder="Ex: Pizzaria MenuFlow"
                 placeholderTextColor="#444"
-                value={slug}
-                onChangeText={setSlug}
-                autoCapitalize="none"
+                value={name}
+                onChangeText={handleNameChange}
               />
             </View>
-            <Text style={styles.hint}>Este será o link que os clientes acessarão.</Text>
-          </View>
 
-          <TouchableOpacity 
-            style={[styles.saveBtn, loading && { opacity: 0.7 }]} 
-            onPress={handleSave} 
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={styles.saveBtnText}>CADASTRAR LOJA</Text>
-            )}
-          </TouchableOpacity>
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>LINK DA LOJA (SLUG)</Text>
+              <View style={styles.slugContainer}>
+                <Text style={styles.slugPrefix}>menuflow.com/</Text>
+                <TextInput
+                  style={styles.slugInput}
+                  placeholder="pizzaria-menuflow"
+                  placeholderTextColor="#444"
+                  value={slug}
+                  onChangeText={setSlug}
+                  autoCapitalize="none"
+                />
+              </View>
+              <Text style={styles.hint}>Este será o link que os clientes acessarão.</Text>
+            </View>
 
-        </ScrollView>
+            <TouchableOpacity 
+              style={[styles.saveBtn, loading && { opacity: 0.7 }]} 
+              onPress={handleSave} 
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <Text style={styles.saveBtnText}>CADASTRAR LOJA</Text>
+              )}
+            </TouchableOpacity>
+
+          </ScrollView>
+        </View>
       </KeyboardAvoidingView>
 
       <CustomAlert 
@@ -181,7 +184,15 @@ export default function NewBrandScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0A0A0A' },
-  container: { padding: 20 },
+  mainWrapper: {
+    flex: 1,
+    alignItems: 'center', // Centraliza o formulário no desktop
+  },
+  container: { 
+    padding: 20,
+    width: '100%',
+    maxWidth: 600, // Largura controlada para o formulário de cadastro
+  },
   iconContainer: { alignItems: 'center', marginTop: 20, marginBottom: 40 },
   iconCircle: { width: 80, height: 80, borderRadius: 25, backgroundColor: '#F59E0B20', justifyContent: 'center', alignItems: 'center', marginBottom: 15, borderWidth: 1, borderColor: '#F59E0B50' },
   headerTitle: { color: '#FFF', fontSize: 24, fontWeight: '900' },
@@ -193,9 +204,19 @@ const styles = StyleSheet.create({
   
   slugContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#171717', borderRadius: 16, borderWidth: 1, borderColor: '#262626', paddingHorizontal: 15, height: 60 },
   slugPrefix: { color: '#F59E0B', fontSize: 16, fontWeight: 'bold' },
-  slugInput: { flex: 1, color: '#FFF', fontSize: 16, height: '100%' },
+  slugInput: { flex: 1, color: '#FFF', fontSize: 16, height: '100%', marginLeft: 5 },
   hint: { color: '#666', fontSize: 12, marginTop: 8, marginLeft: 4 },
   
-  saveBtn: { backgroundColor: '#F59E0B', padding: 20, borderRadius: 18, alignItems: 'center', marginTop: 20, elevation: 5 },
+  saveBtn: { 
+    backgroundColor: '#F59E0B', 
+    padding: 20, 
+    borderRadius: 18, 
+    alignItems: 'center', 
+    marginTop: 20, 
+    elevation: 5,
+    ...Platform.select({
+      web: { cursor: 'pointer' }
+    })
+  },
   saveBtnText: { color: '#000', fontWeight: '900', fontSize: 15, letterSpacing: 0.5 }
 });

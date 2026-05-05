@@ -14,14 +14,16 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions
 } from 'react-native';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
+import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomAlert from '../../components/CustomAlert';
 import api from '../../services/api';
 
-// 1. Interface Atualizada
+// --- INTERFACES ---
 interface Category {
   id: string;
   name: string;
@@ -29,10 +31,9 @@ interface Category {
   isActive: boolean;
   isHighlight: boolean;
   sortOrder: number;
-  activeTime?: any; // Recebe o array JSON do backend
+  activeTime?: any;
 }
 
-// 2. Dias da Semana para o UI
 const WEEK_DAYS = [
   { id: 0, label: 'D' }, { id: 1, label: 'S' }, { id: 2, label: 'T' }, 
   { id: 3, label: 'Q' }, { id: 4, label: 'Q' }, { id: 5, label: 'S' }, { id: 6, label: 'S' }
@@ -41,23 +42,23 @@ const WEEK_DAYS = [
 export default function CategoriesScreen() {
   const { brandId } = useLocalSearchParams();
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  
+  const isLargeScreen = width > 768;
+  const isWeb = Platform.OS === 'web';
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [newCategory, setNewCategory] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // Estados do Modal de Edição
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingCat, setEditingCat] = useState<Category | null>(null);
-
-  // Estados de Configuração de Horário Específico
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [openTime, setOpenTime] = useState('');
   const [closeTime, setCloseTime] = useState('');
 
-  // Estado do CustomAlert
   const [alertConfig, setAlertConfig] = useState({
     visible: false, title: '', message: '', iconName: 'info' as any, iconColor: '#F59E0B', showCancel: false, confirmText: 'OK',
     onConfirm: () => setAlertConfig(prev => ({ ...prev, visible: false }))
@@ -80,7 +81,6 @@ export default function CategoriesScreen() {
 
   useEffect(() => { fetchCategories(); }, [brandId]);
 
-  // --- MÁSCARA DE HORÁRIO ---
   const formatTime = (value: string) => {
     const cleaned = value.replace(/\D/g, '');
     let formatted = cleaned;
@@ -90,11 +90,10 @@ export default function CategoriesScreen() {
     return formatted;
   };
 
-  // --- ADICIONAR CATEGORIA RÁPIDA ---
   const handleAddCategory = async () => {
     if (!newCategory.trim()) return;
     setSubmitting(true);
-    Keyboard.dismiss();
+    if (Platform.OS !== 'web') Keyboard.dismiss();
 
     try {
       await api.post(`/admin/brands/${brandId}/categories`, { name: newCategory.trim() });
@@ -107,7 +106,6 @@ export default function CategoriesScreen() {
     }
   };
 
-  // --- REORDENAÇÃO (DRAG & DROP) ---
   const onDragEnd = async ({ data }: { data: Category[] }) => {
     setCategories(data);
     try {
@@ -119,10 +117,8 @@ export default function CategoriesScreen() {
     }
   };
 
-  // --- ABRIR MODAL DE CONFIGURAÇÕES ---
   const openSettingsModal = (cat: Category) => {
     setEditingCat({ ...cat });
-    
     if (cat.activeTime && Array.isArray(cat.activeTime) && cat.activeTime.length > 0) {
       setScheduleEnabled(true);
       setSelectedDays(cat.activeTime.map((t: any) => t.day));
@@ -134,14 +130,11 @@ export default function CategoriesScreen() {
       setOpenTime('');
       setCloseTime('');
     }
-    
     setEditModalVisible(true);
   };
 
-  // --- ATUALIZAR CATEGORIA (SALVAR MODAL) ---
   const handleUpdateCategory = async () => {
     if (!editingCat) return;
-
     let activeTimePayload = null;
 
     if (scheduleEnabled) {
@@ -153,11 +146,8 @@ export default function CategoriesScreen() {
         showAlert('Atenção', 'Selecione pelo menos um dia da semana.', 'alert-circle', '#EF4444');
         return;
       }
-      // Monta o array JSON para o backend
       activeTimePayload = selectedDays.map(day => ({
-        day,
-        open: openTime,
-        close: closeTime
+        day, open: openTime, close: closeTime
       }));
     }
 
@@ -179,7 +169,6 @@ export default function CategoriesScreen() {
     }
   };
 
-  // --- EXCLUSÃO ---
   const confirmDelete = (category: Category) => {
     setAlertConfig({
       visible: true, title: 'Remover Categoria', message: `Deseja apagar "${category.name}"? Categorias com produtos não podem ser removidas.`,
@@ -196,42 +185,37 @@ export default function CategoriesScreen() {
     });
   };
 
-  // --- RENDERIZAR ITEM DA LISTA ---
   const renderItem = ({ item, drag, isActive }: RenderItemParams<Category>) => {
-    const hasSchedule = item.activeTime && Array.isArray(item.activeTime) && item.activeTime.length > 0;
-
     return (
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onLongPress={drag}
-        disabled={isActive}
-        style={[styles.categoryItem, isActive && styles.categoryItemDragging, !item.isActive && { opacity: 0.5 }]}
+      <View 
+        style={[
+          styles.categoryItem, 
+          isActive && styles.categoryItemDragging, 
+          { opacity: item.isActive ? (isActive ? 0.9 : 1) : 0.5 }
+        ]}
       >
         <View style={styles.categoryInfo}>
-          <TouchableOpacity onPressIn={drag} style={styles.dragHandle}>
+          <TouchableOpacity 
+            onPressIn={drag} 
+            style={styles.dragHandle}
+          >
             <Feather name="menu" size={20} color="#666" />
           </TouchableOpacity>
 
           <Text style={styles.categoryIcon}>{item.icon || '📌'}</Text>
 
-          {/* flex: 1 garante que o conteúdo do meio não esmague os botões */}
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 2 }}>
-              {/* flexShrink permite os '...' se for grande */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
               <Text style={styles.categoryName} numberOfLines={1}>{item.name}</Text>
-              {item.isHighlight && <View style={styles.highlightBadge}><Text style={styles.highlightText}>Destaque</Text></View>}
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={[styles.statusText, { color: item.isActive ? '#10B981' : '#EF4444' }]}>
-                {item.isActive ? 'Visível' : 'Oculto'}
-              </Text>
-              {hasSchedule && (
-                <>
-                  <Text style={{ color: '#666', fontSize: 10, marginHorizontal: 4 }}>•</Text>
-                  <Text style={{ color: '#F59E0B', fontSize: 10, fontWeight: 'bold' }}>Horário Especial</Text>
-                </>
+              {item.isHighlight && (
+                <View style={styles.highlightBadge}>
+                  <Text style={styles.highlightText}>Destaque</Text>
+                </View>
               )}
             </View>
+            <Text style={[styles.statusText, { color: item.isActive ? '#10B981' : '#EF4444' }]}>
+              {item.isActive ? 'Visível' : 'Oculto'}
+            </Text>
           </View>
         </View>
 
@@ -243,145 +227,145 @@ export default function CategoriesScreen() {
             <Feather name="trash-2" size={18} color="#EF4444" />
           </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.safeArea}>
-        <Stack.Screen options={{ title: 'Categorias', headerShown: true, headerStyle: { backgroundColor: '#0A0A0A' }, headerTintColor: '#F59E0B' }} />
+        {/* DESATIVAMOS O HEADER NATIVO PARA USAR O CUSTOMIZADO */}
+        <Stack.Screen options={{ headerShown: false }} />
 
-        <View style={styles.container}>
-          <Text style={styles.description}>
-            Crie, ordene e configure as seções do seu cardápio. <Text style={{ fontWeight: 'bold', color: '#F59E0B' }}>Segure e arraste</Text> para mudar a ordem.
-          </Text>
+        <View style={styles.mainWrapper}>
+          <View style={styles.container}>
+            
+            {/* HEADER PADRONIZADO */}
+            <View style={styles.headerRow}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                <Feather name="arrow-left" size={24} color="#F59E0B" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>
+                Gestão de <Text style={{ color: '#F59E0B' }}>Categorias</Text>
+              </Text>
+            </View>
 
-          <View style={styles.inputRow}>
-            <TextInput style={styles.input} placeholder="Nome da categoria" placeholderTextColor="#444" value={newCategory} onChangeText={setNewCategory} autoCapitalize="words" />
-            <TouchableOpacity style={[styles.addButton, !newCategory.trim() && { opacity: 0.5 }]} onPress={handleAddCategory} disabled={submitting || !newCategory.trim()}>
-              {submitting && !editModalVisible ? <ActivityIndicator color="#000" /> : <Feather name="plus" size={24} color="#000" />}
-            </TouchableOpacity>
+            <Text style={styles.description}>
+              Crie, ordene e configure as seções do seu cardápio. No PC, use o ícone de menu para arrastar.
+            </Text>
+
+            <View style={styles.inputRow}>
+              <TextInput 
+                style={styles.input} 
+                placeholder="Ex: Pizzas Salgadas..." 
+                placeholderTextColor="#444" 
+                value={newCategory} 
+                onChangeText={setNewCategory} 
+              />
+              <TouchableOpacity 
+                style={[styles.addButton, !newCategory.trim() && { opacity: 0.5 }]} 
+                onPress={handleAddCategory} 
+                disabled={submitting || !newCategory.trim()}
+              >
+                {submitting && !editModalVisible ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Feather name="plus" size={24} color="#000" />
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {loading ? (
+              <ActivityIndicator size="large" color="#F59E0B" style={{ marginTop: 50 }} />
+            ) : (
+              <DraggableFlatList
+                data={categories}
+                onDragEnd={onDragEnd}
+                keyExtractor={(item) => item.id}
+                renderItem={renderItem}
+                activationDistance={20}
+                showsVerticalScrollIndicator={false}
+                ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma categoria cadastrada.</Text>}
+                contentContainerStyle={{ paddingBottom: 100 }}
+              />
+            )}
           </View>
-
-          {loading ? (
-            <ActivityIndicator size="large" color="#F59E0B" style={{ marginTop: 50 }} />
-          ) : (
-            <DraggableFlatList
-              data={categories}
-              onDragEnd={onDragEnd}
-              keyExtractor={(item) => item.id}
-              renderItem={renderItem}
-              showsVerticalScrollIndicator={false}
-              containerStyle={{ flex: 1 }}
-              ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma categoria cadastrada.</Text>}
-            />
-          )}
         </View>
 
-        {/* MODAL DE CONFIGURAÇÕES AVANÇADAS */}
-        <Modal visible={editModalVisible} animationType="slide" transparent={true} onRequestClose={() => setEditModalVisible(false)}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Configurar Categoria</Text>
-                <TouchableOpacity onPress={() => setEditModalVisible(false)}><Feather name="x" size={24} color="#666" /></TouchableOpacity>
+        {/* MODAL DE CONFIGURAÇÕES */}
+        <Modal visible={editModalVisible} animationType={isWeb ? 'fade' : 'slide'} transparent={true} onRequestClose={() => setEditModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={isLargeScreen ? styles.modalContainerDesktop : { flex: 1, justifyContent: 'flex-end' }}>
+              <View style={[styles.modalContent, isLargeScreen && styles.modalContentDesktop]}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Configurar Categoria</Text>
+                  <TouchableOpacity onPress={() => setEditModalVisible(false)}><Feather name="x" size={24} color="#666" /></TouchableOpacity>
+                </View>
+
+                {editingCat && (
+                  <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
+                    <View style={isLargeScreen ? styles.modalRow : {}}>
+                      <View style={{ flex: 1, marginRight: isLargeScreen ? 15 : 0 }}>
+                        <Text style={styles.label}>NOME</Text>
+                        <TextInput style={styles.modalInput} value={editingCat.name} onChangeText={(t) => setEditingCat({ ...editingCat, name: t })} />
+                      </View>
+                      <View style={{ width: isLargeScreen ? 120 : 80, marginTop: isLargeScreen ? 0 : 15 }}>
+                        <Text style={styles.label}>EMOJI</Text>
+                        <TextInput style={[styles.modalInput, { textAlign: 'center', fontSize: 20 }]} value={editingCat.icon || ''} onChangeText={(t) => setEditingCat({ ...editingCat, icon: t })} maxLength={2} />
+                      </View>
+                    </View>
+
+                    <View style={styles.switchGrid}>
+                      <View style={styles.switchRow}>
+                        <View style={{ flex: 1 }}><Text style={styles.switchTitle}>Categoria Ativa</Text></View>
+                        <Switch value={editingCat.isActive} onValueChange={(v) => setEditingCat({ ...editingCat, isActive: v })} trackColor={{ false: '#262626', true: '#F59E0B80' }} thumbColor={editingCat.isActive ? '#F59E0B' : '#666'} />
+                      </View>
+
+                      <View style={styles.switchRow}>
+                        <View style={{ flex: 1 }}><Text style={styles.switchTitle}>Destaque (Highlight)</Text></View>
+                        <Switch value={editingCat.isHighlight} onValueChange={(v) => setEditingCat({ ...editingCat, isHighlight: v })} trackColor={{ false: '#262626', true: '#F59E0B80' }} thumbColor={editingCat.isHighlight ? '#F59E0B' : '#666'} />
+                      </View>
+                    </View>
+
+                    <View style={styles.switchRow}>
+                      <View style={{ flex: 1 }}><Text style={styles.switchTitle}>Horário Específico</Text></View>
+                      <Switch value={scheduleEnabled} onValueChange={setScheduleEnabled} trackColor={{ false: '#262626', true: '#F59E0B80' }} thumbColor={scheduleEnabled ? '#F59E0B' : '#666'} />
+                    </View>
+
+                    {scheduleEnabled && (
+                      <View style={styles.scheduleBox}>
+                        <Text style={styles.label}>DIAS DA SEMANA</Text>
+                        <View style={styles.daysRow}>
+                          {WEEK_DAYS.map((day) => {
+                            const isSelected = selectedDays.includes(day.id);
+                            return (
+                              <TouchableOpacity key={day.id} style={[styles.dayCircle, isSelected && styles.dayCircleActive]} onPress={() => setSelectedDays(isSelected ? selectedDays.filter(d => d !== day.id) : [...selectedDays, day.id])}>
+                                <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{day.label}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                        <View style={styles.timeInputRow}>
+                          <View style={{ flex: 1, marginRight: 10 }}>
+                            <Text style={styles.label}>ABERTURA</Text>
+                            <TextInput style={[styles.modalInput, { textAlign: 'center' }]} placeholder="00:00" keyboardType="number-pad" value={openTime} onChangeText={(t) => setOpenTime(formatTime(t))} />
+                          </View>
+                          <View style={{ flex: 1, marginLeft: 10 }}>
+                            <Text style={styles.label}>FECHAMENTO</Text>
+                            <TextInput style={[styles.modalInput, { textAlign: 'center' }]} placeholder="23:59" keyboardType="number-pad" value={closeTime} onChangeText={(t) => setCloseTime(formatTime(t))} />
+                          </View>
+                        </View>
+                      </View>
+                    )}
+
+                    <TouchableOpacity style={styles.saveModalBtn} onPress={handleUpdateCategory} disabled={submitting}>
+                      {submitting ? <ActivityIndicator color="#000" /> : <Text style={styles.saveModalBtnText}>SALVAR ALTERAÇÕES</Text>}
+                    </TouchableOpacity>
+                  </ScrollView>
+                )}
               </View>
-
-              {editingCat && (
-                <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                  <View style={{ flexDirection: 'row', gap: 15, marginBottom: 20 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.label}>NOME</Text>
-                      <TextInput style={styles.modalInput} value={editingCat.name} onChangeText={(t) => setEditingCat({ ...editingCat, name: t })} />
-                    </View>
-                    <View style={{ width: 80 }}>
-                      <Text style={styles.label}>EMOJI</Text>
-                      <TextInput style={[styles.modalInput, { textAlign: 'center', fontSize: 20 }]} value={editingCat.icon || ''} onChangeText={(t) => setEditingCat({ ...editingCat, icon: t })} maxLength={2} />
-                    </View>
-                  </View>
-
-                  <View style={styles.switchRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.switchTitle}>Categoria Ativa</Text>
-                      <Text style={styles.switchDesc}>Exibe esta categoria no cardápio web.</Text>
-                    </View>
-                    <Switch value={editingCat.isActive} onValueChange={(v) => setEditingCat({ ...editingCat, isActive: v })} trackColor={{ false: '#262626', true: '#F59E0B80' }} thumbColor={editingCat.isActive ? '#F59E0B' : '#666'} />
-                  </View>
-
-                  <View style={styles.switchRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.switchTitle}>Destacar (Highlight)</Text>
-                      <Text style={styles.switchDesc}>Pinta a categoria com as cores da sua marca.</Text>
-                    </View>
-                    <Switch value={editingCat.isHighlight} onValueChange={(v) => setEditingCat({ ...editingCat, isHighlight: v })} trackColor={{ false: '#262626', true: '#F59E0B80' }} thumbColor={editingCat.isHighlight ? '#F59E0B' : '#666'} />
-                  </View>
-
-                  <View style={styles.switchRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.switchTitle}>Horário Específico</Text>
-                      <Text style={styles.switchDesc}>Disponível apenas em certas horas do dia.</Text>
-                    </View>
-                    <Switch value={scheduleEnabled} onValueChange={setScheduleEnabled} trackColor={{ false: '#262626', true: '#F59E0B80' }} thumbColor={scheduleEnabled ? '#F59E0B' : '#666'} />
-                  </View>
-
-                  {/* BLOCO DE HORÁRIO ESPECÍFICO */}
-                  {scheduleEnabled && (
-                    <View style={styles.scheduleBox}>
-                      <Text style={styles.label}>DIAS DA SEMANA</Text>
-                      <View style={styles.daysRow}>
-                        {WEEK_DAYS.map((day) => {
-                          const isSelected = selectedDays.includes(day.id);
-                          return (
-                            <TouchableOpacity
-                              key={day.id}
-                              style={[styles.dayCircle, isSelected && styles.dayCircleActive]}
-                              onPress={() => {
-                                if (isSelected) {
-                                  setSelectedDays(prev => prev.filter(d => d !== day.id));
-                                } else {
-                                  setSelectedDays(prev => [...prev, day.id]);
-                                }
-                              }}
-                            >
-                              <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{day.label}</Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-
-                      <View style={styles.timeInputRow}>
-                        <View style={{ flex: 1, marginRight: 10 }}>
-                          <Text style={styles.label}>ABERTURA</Text>
-                          <TextInput 
-                            style={[styles.modalInput, { textAlign: 'center' }]} 
-                            placeholder="00:00" placeholderTextColor="#666" 
-                            keyboardType="number-pad" maxLength={5}
-                            value={openTime} 
-                            onChangeText={(t) => setOpenTime(formatTime(t))} 
-                          />
-                        </View>
-                        <View style={{ flex: 1, marginLeft: 10 }}>
-                          <Text style={styles.label}>FECHAMENTO</Text>
-                          <TextInput 
-                            style={[styles.modalInput, { textAlign: 'center' }]} 
-                            placeholder="23:59" placeholderTextColor="#666" 
-                            keyboardType="number-pad" maxLength={5}
-                            value={closeTime} 
-                            onChangeText={(t) => setCloseTime(formatTime(t))} 
-                          />
-                        </View>
-                      </View>
-                    </View>
-                  )}
-
-                  <TouchableOpacity style={styles.saveModalBtn} onPress={handleUpdateCategory} disabled={submitting}>
-                    {submitting ? <ActivityIndicator color="#000" /> : <Text style={styles.saveModalBtnText}>SALVAR ALTERAÇÕES</Text>}
-                  </TouchableOpacity>
-                </ScrollView>
-              )}
-            </View>
-          </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
+          </View>
         </Modal>
 
         <CustomAlert {...alertConfig} onCancel={() => setAlertConfig(p => ({ ...p, visible: false }))} />
@@ -392,50 +376,81 @@ export default function CategoriesScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0A0A0A' },
+  mainWrapper: { flex: 1, alignItems: 'center' },
+  container: { flex: 1, width: '100%', maxWidth: 800, paddingHorizontal: 20 },
+  
+  headerRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginTop: 20, 
+    marginBottom: 20 
+  },
+  backButton: { 
+    width: 40, 
+    height: 40, 
+    justifyContent: 'center' 
+  },
+  headerTitle: { 
+    color: '#FFF', 
+    fontSize: 24, 
+    fontWeight: '900',
+    marginLeft: 5 
+  },
+
+  description: { color: '#666', fontSize: 13, marginBottom: 25, lineHeight: 18 },
+  inputRow: { flexDirection: 'row', marginBottom: 25 },
+  input: { 
+    flex: 1, 
+    backgroundColor: '#171717', 
+    borderRadius: 15, 
+    padding: 16, 
+    color: '#FFF', 
+    borderWidth: 1, 
+    borderColor: '#262626' 
+  },
+  addButton: { 
+    backgroundColor: '#F59E0B', 
+    width: 60, 
+    borderRadius: 15, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginLeft: 10 
+  },
+  
   emptyText: { color: '#444', textAlign: 'center', marginTop: 50 },
-  container: { flex: 1, padding: 20 },
-  description: { color: '#888', fontSize: 13, marginBottom: 20, lineHeight: 20 },
-  inputRow: { flexDirection: 'row', marginBottom: 20 },
-  input: { flex: 1, backgroundColor: '#171717', borderRadius: 15, padding: 16, color: '#FFF', borderWidth: 1, borderColor: '#262626', fontSize: 15, marginRight: 10 },
-  addButton: { backgroundColor: '#F59E0B', width: 60, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
-
-  // Itens da Lista
   categoryItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#171717', padding: 16, borderRadius: 18, marginBottom: 10, borderWidth: 1, borderColor: '#262626' },
-  categoryItemDragging: { backgroundColor: '#262626', transform: [{ scale: 1.02 }], shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10 },
-  categoryInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }, // Ajuste crucial de Layout
-  dragHandle: { paddingRight: 15, paddingVertical: 10 },
+  categoryItemDragging: { backgroundColor: '#262626', opacity: 0.8 },
+  categoryInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 },
+  dragHandle: { paddingRight: 15, cursor: Platform.OS === 'web' ? 'grab' : 'auto' } as any,
   categoryIcon: { fontSize: 24, marginRight: 15 },
-  categoryName: { color: '#FFF', fontSize: 16, fontWeight: 'bold', flexShrink: 1 }, // Garante as reticências se o nome for gigante
-  statusText: { fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.5 },
+  categoryName: { color: '#FFF', fontSize: 16, fontWeight: 'bold', flexShrink: 1 },
+  statusText: { fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' },
   highlightBadge: { backgroundColor: '#F59E0B20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: '#F59E0B40' },
-  highlightText: { color: '#F59E0B', fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase' },
-
+  highlightText: { color: '#F59E0B', fontSize: 9, fontWeight: 'bold' },
   actionsContainer: { flexDirection: 'row', gap: 10 },
   actionBtn: { padding: 8, backgroundColor: '#262626', borderRadius: 10 },
   actionBtnDanger: { padding: 8, backgroundColor: '#EF444420', borderRadius: 10 },
 
-  // Modal
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.8)' },
-  modalContent: { backgroundColor: '#121212', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, borderWidth: 1, borderColor: '#262626', maxHeight: '90%' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)' },
+  modalContainerDesktop: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  modalContent: { backgroundColor: '#121212', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, borderWidth: 1, borderColor: '#262626' },
+  modalContentDesktop: { width: 600, borderRadius: 30, maxHeight: '80%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
-  modalTitle: { color: '#FFF', fontSize: 18, fontWeight: '900', textTransform: 'uppercase', fontStyle: 'italic' },
+  modalTitle: { color: '#FFF', fontSize: 18, fontWeight: '900' },
   modalBody: { paddingBottom: 20 },
-  label: { color: '#666', fontSize: 10, fontWeight: '900', marginBottom: 8, letterSpacing: 1.2, marginLeft: 4 },
-  modalInput: { backgroundColor: '#1A1A1A', borderRadius: 12, padding: 15, color: '#FFF', borderWidth: 1, borderColor: '#333', fontSize: 15 },
-
+  modalRow: { flexDirection: 'row', gap: 15 },
+  label: { color: '#666', fontSize: 10, fontWeight: '900', marginBottom: 8, letterSpacing: 1.2 },
+  modalInput: { backgroundColor: '#1A1A1A', borderRadius: 12, padding: 15, color: '#FFF', borderWidth: 1, borderColor: '#333' },
+  switchGrid: { marginBottom: 10 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1A1A1A', padding: 15, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#333' },
-  switchTitle: { color: '#FFF', fontWeight: 'bold', fontSize: 14, marginBottom: 2 },
-  switchDesc: { color: '#666', fontSize: 11 },
-
-  // Novas classes do Schedule
+  switchTitle: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
   scheduleBox: { backgroundColor: '#1A1A1A', padding: 15, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#333', borderStyle: 'dashed' },
   daysRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, marginTop: 5 },
   dayCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#262626', justifyContent: 'center', alignItems: 'center' },
   dayCircleActive: { backgroundColor: '#F59E0B' },
-  dayText: { color: '#888', fontWeight: 'bold', fontSize: 14 },
+  dayText: { color: '#888', fontWeight: 'bold' },
   dayTextActive: { color: '#000' },
   timeInputRow: { flexDirection: 'row', justifyContent: 'space-between' },
-
-  saveModalBtn: { backgroundColor: '#F59E0B', padding: 20, borderRadius: 18, alignItems: 'center', marginTop: 20 },
-  saveModalBtnText: { color: '#000', fontWeight: '900', fontSize: 14, letterSpacing: 0.5 }
+  saveModalBtn: { backgroundColor: '#F59E0B', padding: 20, borderRadius: 18, alignItems: 'center', marginTop: 10 },
+  saveModalBtnText: { color: '#000', fontWeight: '900' }
 });

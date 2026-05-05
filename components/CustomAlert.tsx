@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 
 interface CustomAlertProps {
   visible: boolean;
@@ -20,19 +20,33 @@ export default function CustomAlert({
   title,
   message,
   iconName = 'alert-circle',
-  iconColor = '#F59E0B', // Laranja MenuFlow por padrão
+  iconColor = '#F59E0B', 
   confirmText = 'OK',
   cancelText = 'CANCELAR',
   showCancel = false,
   onConfirm,
   onCancel,
 }: CustomAlertProps) {
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width > 768;
+
   return (
-    <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onCancel || onConfirm}>
+    <Modal 
+      animationType="fade" 
+      transparent={true} 
+      visible={visible} 
+      onRequestClose={onCancel || onConfirm}
+    >
       <Pressable style={styles.overlay} onPress={onCancel || onConfirm}>
-        <Pressable style={styles.dialog} onPress={(e) => e.stopPropagation()}>
+        {/* Adicionada largura máxima para Desktop */}
+        <Pressable 
+          style={[
+            styles.dialog, 
+            isLargeScreen && styles.dialogDesktop
+          ]} 
+          onPress={(e) => e.stopPropagation()}
+        >
           
-          {/* Ícone Dinâmico */}
           <View style={[styles.iconContainer, { backgroundColor: `${iconColor}15`, borderColor: `${iconColor}30` }]}>
             <Feather name={iconName} size={32} color={iconColor} />
           </View>
@@ -41,16 +55,18 @@ export default function CustomAlert({
           <Text style={styles.message}>{message}</Text>
 
           <View style={styles.buttonsRow}>
-            {/* Botão Cancelar (Opcional) */}
             {showCancel && (
               <TouchableOpacity style={styles.btnSecondary} onPress={onCancel}>
                 <Text style={styles.btnSecondaryText}>{cancelText}</Text>
               </TouchableOpacity>
             )}
 
-            {/* Botão Confirmar Principal */}
             <TouchableOpacity 
-              style={[styles.btnPrimary, showCancel ? { width: '48%' } : { width: '100%' }, { backgroundColor: iconColor }]} 
+              style={[
+                styles.btnPrimary, 
+                showCancel ? { width: '48%' } : { width: '100%' }, 
+                { backgroundColor: iconColor }
+              ]} 
               onPress={onConfirm}
             >
               <Text style={styles.btnPrimaryText}>{confirmText}</Text>
@@ -79,7 +95,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#262626',
-    elevation: 10,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.5,
+        shadowRadius: 20,
+      },
+      android: {
+        elevation: 10,
+      },
+      web: {
+        boxShadow: '0px 15px 35px rgba(0,0,0,0.5)',
+      }
+    }),
+  },
+  // Limita a largura no Desktop para não ficar esticado
+  dialogDesktop: {
+    maxWidth: 400,
   },
   iconContainer: {
     padding: 15,
@@ -125,7 +158,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnPrimaryText: {
-    color: '#000', // Texto preto para contrastar com o Laranja
+    color: '#000',
     fontWeight: '900',
     fontSize: 13,
     letterSpacing: 0.5,

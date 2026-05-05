@@ -1,6 +1,5 @@
 import { Feather } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,28 +15,41 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import CustomAlert from '../components/CustomAlert'; // Ajuste o caminho se necessário
+import CustomAlert from '../components/CustomAlert';
 import api from '../services/api';
+import { setStorageItem } from '../utils/storage';
+
+// =====================================================================
+// COMPONENTE EXTRAÍDO (FORA DA TELA PRINCIPAL) PARA NÃO PERDER O FOCO
+// =====================================================================
+const DismissKeyboardWrapper = ({ children }: { children: React.ReactNode }) => {
+  if (Platform.OS === 'web') {
+    return <View style={{ flex: 1 }}>{children}</View>;
+  }
+  return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={{ flex: 1 }}>{children}</View>
+    </TouchableWithoutFeedback>
+  );
+};
+// =====================================================================
 
 export default function LoginScreen() {
   const router = useRouter();
 
-  // Estados do Formulário
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Estado Dinâmico do CustomAlert
   const [alertConfig, setAlertConfig] = useState({
     visible: false,
     title: '',
     message: '',
     iconName: 'info' as keyof typeof Feather.glyphMap,
-    iconColor: '#F59E0B', // Default Laranja
+    iconColor: '#F59E0B',
   });
 
-  // Função Helper para chamar alertas rapidamente
   const showAlert = (title: string, message: string, iconName: keyof typeof Feather.glyphMap = 'info', iconColor = '#F59E0B') => {
     setAlertConfig({ visible: true, title, message, iconName, iconColor });
   };
@@ -47,14 +59,13 @@ export default function LoginScreen() {
   };
 
   const handleLogin = async () => {
-    // 1. Validação Básica (Alerta de Aviso - Laranja)
     if (!email || !password) {
       showAlert('Atenção', 'Preencha seu e-mail e senha para continuar.', 'info', '#F59E0B');
       return;
     }
 
     setLoading(true);
-    Keyboard.dismiss();
+    if (Platform.OS !== 'web') Keyboard.dismiss(); 
 
     try {
       const response = await api.post('/auth/login', {
@@ -64,20 +75,16 @@ export default function LoginScreen() {
 
       const { token, user } = response.data;
 
-      // 2. Salva os dados
-      await SecureStore.setItemAsync('menuflow_token', token);
-      await SecureStore.setItemAsync('menuflow_user', JSON.stringify(user));
+      await setStorageItem('menuflow_token', token);
+      await setStorageItem('menuflow_user', JSON.stringify(user));
 
-      // 3. Configura o Axios
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-      // 4. SMART ROUTING
       router.replace('/(tabs)');
 
     } catch (error: any) {
-      console.log(error.response);
+      console.error('error ==> ', error);
       
-      // Tratamento de Erros da API (Alerta de Erro - Vermelho)
       if (error.response?.status === 401) {
         showAlert('Acesso Negado', 'E-mail ou senha incorretos.', 'x-circle', '#EF4444');
       } else {
@@ -94,84 +101,87 @@ export default function LoginScreen() {
       <StatusBar barStyle="light-content" />
       <Stack.Screen options={{ headerShown: false }} />
 
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <DismissKeyboardWrapper>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.container}
         >
           <View style={styles.content}>
-
-            {/* LOGO & BOAS-VINDAS */}
-            <View style={styles.header}>
-              <View style={styles.logoIcon}>
-                <Feather name="layers" size={40} color="#000" />
-              </View>
-              <Text style={styles.title}>Menu<Text style={{ color: '#F59E0B' }}>Flow</Text></Text>
-              <Text style={styles.subtitle}>Gerencie seu império de onde estiver.</Text>
-            </View>
-
-            {/* FORMULÁRIO */}
-            <View style={styles.form}>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>E-MAIL</Text>
-                <View style={styles.inputContainer}>
-                  <Feather name="mail" size={20} color="#666" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="seu@email.com"
-                    placeholderTextColor="#444"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    value={email}
-                    onChangeText={setEmail}
-                    editable={!loading}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>SENHA</Text>
-                <View style={styles.inputContainer}>
-                  <Feather name="lock" size={20} color="#666" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="••••••••"
-                    placeholderTextColor="#444"
-                    secureTextEntry={!showPassword}
-                    value={password}
-                    onChangeText={setPassword}
-                    editable={!loading}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    style={styles.eyeIcon}
-                  >
-                    <Feather name={showPassword ? "eye-off" : "eye"} size={20} color="#666" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <TouchableOpacity style={styles.forgotPassword}>
-                <Text style={styles.forgotPasswordText}>Esqueceu a senha?</Text>
-              </TouchableOpacity>
-
-              {/* BOTÃO DE LOGIN */}
-              <TouchableOpacity
-                style={[styles.loginButton, loading && { opacity: 0.7 }]}
-                onPress={handleLogin}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#000" />
-                ) : (
-                  <Text style={styles.loginButtonText}>ENTRAR NO SISTEMA</Text>
-                )}
-              </TouchableOpacity>
-
-            </View>
             
+            <View style={styles.formContainerWrapper}>
+              
+              {/* LOGO & BOAS-VINDAS */}
+              <View style={styles.header}>
+                <View style={styles.logoIcon}>
+                  <Feather name="layers" size={40} color="#000" />
+                </View>
+                <Text style={styles.title}>Menu<Text style={{ color: '#F59E0B' }}>Flow</Text></Text>
+                <Text style={styles.subtitle}>Gerencie seu império de onde estiver.</Text>
+              </View>
+
+              {/* FORMULÁRIO */}
+              <View style={styles.form}>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>E-MAIL</Text>
+                  <View style={styles.inputContainer}>
+                    <Feather name="mail" size={20} color="#666" style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, Platform.OS === 'web' && { outlineStyle: 'none' } as any]}
+                      placeholder="seu@email.com"
+                      placeholderTextColor="#444"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      value={email}
+                      onChangeText={setEmail}
+                      editable={!loading}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>SENHA</Text>
+                  <View style={styles.inputContainer}>
+                    <Feather name="lock" size={20} color="#666" style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, Platform.OS === 'web' && { outlineStyle: 'none' } as any]}
+                      placeholder="••••••••"
+                      placeholderTextColor="#444"
+                      secureTextEntry={!showPassword}
+                      value={password}
+                      onChangeText={setPassword}
+                      editable={!loading}
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowPassword(!showPassword)}
+                      style={styles.eyeIcon}
+                    >
+                      <Feather name={showPassword ? "eye-off" : "eye"} size={20} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <TouchableOpacity style={styles.forgotPassword}>
+                  <Text style={styles.forgotPasswordText}>Esqueceu a senha?</Text>
+                </TouchableOpacity>
+
+                {/* BOTÃO DE LOGIN */}
+                <TouchableOpacity
+                  style={[styles.loginButton, loading && { opacity: 0.7 }]}
+                  onPress={handleLogin}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#000" />
+                  ) : (
+                    <Text style={styles.loginButtonText}>ENTRAR NO SISTEMA</Text>
+                  )}
+                </TouchableOpacity>
+
+              </View>
+            </View>
+
             {/* COMPONENTE DE ALERTA DINÂMICO */}
             <CustomAlert
               visible={alertConfig.visible}
@@ -184,7 +194,7 @@ export default function LoginScreen() {
 
           </View>
         </KeyboardAvoidingView>
-      </TouchableWithoutFeedback>
+      </DismissKeyboardWrapper>
     </SafeAreaView>
   );
 }
@@ -193,6 +203,11 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0A0A0A' },
   container: { flex: 1 },
   content: { flex: 1, paddingHorizontal: 30, justifyContent: 'center' },
+  formContainerWrapper: {
+    width: '100%',
+    maxWidth: 450, 
+    alignSelf: 'center', 
+  },
   header: { alignItems: 'center', marginBottom: 50 },
   logoIcon: { backgroundColor: '#F59E0B', width: 80, height: 80, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginBottom: 20, shadowColor: "#F59E0B", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 10 },
   title: { color: '#FFF', fontSize: 36, fontWeight: '900', letterSpacing: -1 },

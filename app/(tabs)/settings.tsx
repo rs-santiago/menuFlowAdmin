@@ -1,6 +1,6 @@
+import { removeStorageItem } from '@/utils/storage';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import CustomAlert from '../../components/CustomAlert'; // Ajuste o caminho conforme a localização deste arquivo
@@ -37,8 +37,8 @@ export default function SettingsScreen() {
   const performLogout = async () => {
     hideAlert();
     try {
-      await SecureStore.deleteItemAsync('menuflow_token');
-      await SecureStore.deleteItemAsync('menuflow_user'); // Caso você também salve os dados do usuário
+      await removeStorageItem('menuflow_token');
+      await removeStorageItem('menuflow_user'); // Caso você também salve os dados do usuário
       router.replace('/login');
     } catch (e) {
       showAlert('Erro', 'Não foi possível sair da conta.', 'x-circle', '#EF4444');

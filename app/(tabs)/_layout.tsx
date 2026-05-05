@@ -1,34 +1,54 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { Platform } from 'react-native';
 
-import { useColorScheme } from '@/components/useColorScheme';
-
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
+/**
+ * Componente de ícone atualizado para Feather (padrão do projeto)
+ */
 function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
+  name: React.ComponentProps<typeof Feather>['name'];
   color: string;
 }) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
+  return <Feather size={22} style={{ marginBottom: -3 }} {...props} />;
 }
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
-    <Tabs screenOptions={{ tabBarActiveTintColor: '#F59E0B', tabBarStyle: { backgroundColor: '#0A0A0A', borderTopColor: '#262626' } }}>
+    <Tabs
+      screenOptions={{
+        tabBarActiveTintColor: '#F59E0B',
+        tabBarInactiveTintColor: '#666',
+        // Estilização da Barra
+        tabBarStyle: {
+          backgroundColor: '#0A0A0A',
+          borderTopColor: '#262626',
+          height: Platform.OS === 'ios' ? 85 : 65,
+          paddingBottom: Platform.OS === 'ios' ? 30 : 10,
+          paddingTop: 10,
+        },
+        // Remove o Header duplo (pois as telas já tem o seu)
+        headerShown: false,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '700',
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+        },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Dashboard',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />, // Pode mudar o ícone depois
+          tabBarIcon: ({ color }) => <TabBarIcon name="grid" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="settings" // <--- Nome exato do arquivo que você renomeou
+        name="settings"
         options={{
           title: 'Ajustes',
-          tabBarIcon: ({ color }) => <TabBarIcon name="gear" color={color} />, // Ícone de engrenagem
+          tabBarIcon: ({ color }) => <TabBarIcon name="settings" color={color} />,
         }}
       />
     </Tabs>
